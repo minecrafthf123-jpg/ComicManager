@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">漫画管理器</string>
+    <string name="import_comic">导入漫画</string>
+    <string name="no_comics">还没有漫画，点击右下角按钮导入</string>
+    <string name="delete_confirm_title">确认删除</string>
+    <string name="delete_confirm_message">确定要删除 \"%s\" 吗？此操作不可撤销。</string>
+    <string name="confirm">确定</string>
+    <string name="cancel">取消</string>
+    <string name="page_flip">翻页模式</string>
+    <string name="scroll_mode">滚动模式</string>
+    <string name="import_error">导入失败</string>
+    <string name="import_success">导入成功</string>
+    <string name="no_images">ZIP 文件中未找到图片</string>
+</resources>

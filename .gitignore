@@ -1,0 +1,26 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+*.aab
+*.jks
+*.keystore
+keystore.properties
+local.properties
+/app/build
+/.kotlin
+/app/release
+
+# Local device diagnostics and database snapshots
+/*.png
+/db*.bin
+/*.db
+/*.db-*
+/*.sqlite
+/*.sqlite-*
