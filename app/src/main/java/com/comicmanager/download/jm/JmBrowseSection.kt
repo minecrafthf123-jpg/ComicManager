@@ -15,10 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
+import com.comicmanager.R
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmComment
 import kotlinx.coroutines.launch
@@ -46,6 +49,7 @@ fun JmBrowseSection(
     onExternalConsumed: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val gridState = rememberLazyGridState()
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<JmSearchItem>>(emptyList()) }
@@ -80,9 +84,12 @@ fun JmBrowseSection(
                 }
                 results = newResults
                 page = p
-                if (r.second.isEmpty() && p == 1) error = "无结果"
+                if (r.second.isEmpty() && p == 1) error = context.getString(R.string.no_results)
             } catch (e: Exception) {
-                error = "搜索失败: " + (e.message ?: "未知错误")
+                error = context.getString(
+                    R.string.search_failed,
+                    e.message ?: context.getString(R.string.unknown_error)
+                )
             }
             loading = false
         }
@@ -98,7 +105,7 @@ fun JmBrowseSection(
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
-                placeholder = { Text("搜索JM漫画", style = MaterialTheme.typography.bodySmall) },
+                placeholder = { Text(stringResource(R.string.search_jm_hint), style = MaterialTheme.typography.bodySmall) },
                 singleLine = true,
                 modifier = Modifier.weight(1f),
                 textStyle = MaterialTheme.typography.bodySmall
@@ -107,7 +114,7 @@ fun JmBrowseSection(
             Button(
                 onClick = { if (query.isNotBlank()) doSearch(1, query.trim()) },
                 enabled = !loading
-            ) { Text("搜索") }
+            ) { Text(stringResource(R.string.action_search)) }
         }
 
         if (loading && results.isEmpty()) {
@@ -162,7 +169,7 @@ fun JmBrowseSection(
                                     Modifier.fillMaxSize().background(Color.Gray),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text("封面", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                    Text(stringResource(R.string.cover), color = Color.White, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         )
@@ -184,7 +191,7 @@ fun JmBrowseSection(
                             CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
                         } else {
                             OutlinedButton(onClick = { doSearch(page + 1, query.trim()) }) {
-                                Text("加载更多")
+                                Text(stringResource(R.string.action_load_more))
                             }
                         }
                     }

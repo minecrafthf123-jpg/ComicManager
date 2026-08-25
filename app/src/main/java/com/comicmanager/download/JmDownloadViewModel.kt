@@ -6,8 +6,10 @@ import android.webkit.CookieManager
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.comicmanager.R
 import com.comicmanager.data.ComicRepository
 import com.comicmanager.model.Comic
+import com.comicmanager.download.jm.JmNativeDownloadResult
 import com.comicmanager.download.jm.JmNativeDownloader
 import com.comicmanager.util.DownloadUtil
 import com.comicmanager.util.ZipUtils
@@ -19,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class DownloadUiState(
     val currentUrl: String = "https://18comic.vip/",
@@ -27,6 +30,7 @@ data class DownloadUiState(
     val downloadedPages: Int = 0,
     val totalPages: Int = 0,
     val statusMessage: String = "",
+    val canRetry: Boolean = false,
     val comicTitle: String = "",
     val showCaptchaHelp: Boolean = false,
     val captchaText: String = "",
@@ -43,11 +47,44 @@ class JmDownloadViewModel(
     private val repository: ComicRepository
 ) : ViewModel() {
 
+    private enum class RetryTarget { WEB, NATIVE }
+
     private var appContext: Context? = null
+    private var localeTag: String = ""
 
     fun setAppContext(context: Context) {
-        if (appContext == null) appContext = context.applicationContext
+        val localizedContext = context.applicationContext.createConfigurationContext(
+            context.resources.configuration
+        )
+        val nextLocaleTag = localizedContext.resources.configuration.locales[0].toLanguageTag()
+        val localeChanged = localeTag.isNotEmpty() && localeTag != nextLocaleTag
+        appContext = localizedContext
+        localeTag = nextLocaleTag
+
+        // Status strings are resolved when an event occurs. Clear an inactive,
+        // already-rendered message after a locale switch so it cannot remain in
+        // the previous language when this screen is opened again.
+        if (
+            localeChanged &&
+            !downloadInFlight.get() &&
+            !_uiState.value.isDownloading &&
+            !_uiState.value.nativeRunning
+        ) {
+            retryTarget = null
+            _uiState.value = _uiState.value.copy(
+                statusMessage = "",
+                canRetry = false,
+                nativePhase = "",
+                nativeMsg = ""
+            )
+        }
     }
+
+    private fun text(resId: Int, vararg args: Any): String =
+        appContext?.getString(resId, *args).orEmpty()
+
+    private fun quantityText(resId: Int, count: Int, vararg args: Any): String =
+        appContext?.resources?.getQuantityString(resId, count, *args).orEmpty()
 
     private val _uiState = MutableStateFlow(DownloadUiState())
     val uiState: StateFlow<DownloadUiState> = _uiState.asStateFlow()
@@ -58,6 +95,9 @@ class JmDownloadViewModel(
     private var pendingZipFile: File? = null
     private var pendingZipName: String = ""
     private var hasImported = false
+    private val downloadInFlight = AtomicBoolean(false)
+    private var retryTarget: RetryTarget? = null
+    private var lastNativeAlbumId: String = ""
 
     var nativeDownloader: JmNativeDownloader? = null
         private set
@@ -83,9 +123,35 @@ class JmDownloadViewModel(
     fun startNativeDownload(albumId: String) {
         initNativeDownloader()
         val dl = nativeDownloader ?: return
-        if (dl.state.value.isRunning) return
         val ctx = appContext ?: return
-        viewModelScope.launch { dl.downloadAlbum(ctx, albumId.trim()) }
+        val normalizedId = albumId.trim()
+        if (normalizedId.isBlank() || !downloadInFlight.compareAndSet(false, true)) return
+
+        lastNativeAlbumId = normalizedId
+        retryTarget = RetryTarget.NATIVE
+        _uiState.value = _uiState.value.copy(statusMessage = "", canRetry = false)
+        viewModelScope.launch {
+            try {
+                val result = dl.downloadAlbum(ctx, normalizedId)
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = result.fold(
+                        onSuccess = { outcome: JmNativeDownloadResult ->
+                            quantityText(
+                                R.plurals.native_added_pages,
+                                outcome.pageCount,
+                                outcome.comicName,
+                                outcome.pageCount
+                            )
+                        },
+                        onFailure = { text(R.string.status_download_failed_retry, it.message.orEmpty()) }
+                    ),
+                    canRetry = result.isFailure
+                )
+                retryTarget = if (result.isSuccess) null else RetryTarget.NATIVE
+            } finally {
+                downloadInFlight.set(false)
+            }
+        }
     }
 
     suspend fun searchJm(query: String, page: Int): Pair<Int, List<com.comicmanager.download.jm.JmSearchItem>> {
@@ -125,8 +191,10 @@ class JmDownloadViewModel(
             currentUrl = finalUrl,
             inputUrl = finalUrl,
             statusMessage = "",
+            canRetry = false,
             isDownloading = false
         )
+        retryTarget = null
     }
 
     fun onPageFinished(url: String, title: String) {
@@ -139,29 +207,35 @@ class JmDownloadViewModel(
     }
 
     fun onJsDownloadClickResult(result: String) {
-        _uiState.value = _uiState.value.copy(statusMessage = result)
+        _uiState.value = _uiState.value.copy(statusMessage = result, canRetry = false)
     }
 
     fun onJsCaptchaResult(result: String) {
         when {
             result.startsWith("SOLVED:") || result.startsWith("SOLVED_CLICK:") -> {
                 _uiState.value = _uiState.value.copy(
-                    statusMessage = "验证码已解答，等待下载...",
+                    statusMessage = text(R.string.status_captcha_solved),
+                    canRetry = false,
                     showCaptchaHelp = false
                 )
             }
             result == "NO_MATH" -> {
                 _uiState.value = _uiState.value.copy(
-                    statusMessage = "未检测到验证码"
+                    statusMessage = text(R.string.status_captcha_not_found),
+                    canRetry = false
                 )
             }
             result.startsWith("SOLVED_NO_SUBMIT:") -> {
                 _uiState.value = _uiState.value.copy(
-                    statusMessage = "验证码已计算但无法提交，可尝试手动操作"
+                    statusMessage = text(R.string.status_captcha_no_submit),
+                    canRetry = false
                 )
             }
             else -> {
-                _uiState.value = _uiState.value.copy(statusMessage = "验证码处理: $result")
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = text(R.string.status_captcha_processing, result),
+                    canRetry = false
+                )
             }
         }
     }
@@ -179,38 +253,65 @@ class JmDownloadViewModel(
 
     fun onDownloadIntercepted(context: Context, url: String, userAgent: String?, contentDisposition: String?) {
         if (hasImported) return
-        hasImported = true
         lastDownloadUrl = url
         lastUserAgent = userAgent
         lastContentDisposition = contentDisposition
-        _uiState.value = _uiState.value.copy(
-            isDownloading = true,
-            statusMessage = "正在下载文件..."
-        )
         val cookies = CookieManager.getInstance().getCookie(url) ?: ""
-        downloadAndImport(context, cookies)
+        if (downloadAndImport(context, cookies)) hasImported = true
     }
 
-    private fun downloadAndImport(context: Context, cookies: String) {
+    private fun downloadAndImport(context: Context, cookies: String): Boolean {
+        if (!downloadInFlight.compareAndSet(false, true)) return false
+
+        retryTarget = RetryTarget.WEB
+        _uiState.value = _uiState.value.copy(
+            isDownloading = true,
+            statusMessage = text(R.string.status_downloading_file),
+            canRetry = false
+        )
+
         viewModelScope.launch(Dispatchers.IO) {
-            val fileName = DownloadUtil.parseFileName(lastContentDisposition)
-                ?: lastDownloadUrl.substringAfterLast('/').substringBefore('?').ifBlank { "jm_download.zip" }
+            try {
+                val fileName = DownloadUtil.parseFileName(lastContentDisposition)
+                    ?: lastDownloadUrl.substringAfterLast('/').substringBefore('?').ifBlank { "jm_download.zip" }
 
-            val downloadFile = File(context.filesDir, "downloads/$fileName")
-            val result = DownloadUtil.downloadFile(
-                lastDownloadUrl, lastUserAgent, _uiState.value.currentUrl, downloadFile, cookies
-            )
+                val downloadFile = File(context.filesDir, "downloads/$fileName")
+                val result = DownloadUtil.downloadFile(
+                    lastDownloadUrl, lastUserAgent, _uiState.value.currentUrl, downloadFile, cookies
+                )
 
-            if (result.isSuccess) {
-                _uiState.value = _uiState.value.copy(statusMessage = "下载完成，导入中...")
-                doImport(context, result.getOrThrow())
-            } else {
+                if (result.isSuccess) {
+                    _uiState.value = _uiState.value.copy(
+                        statusMessage = text(R.string.status_download_complete_importing),
+                        canRetry = false
+                    )
+                    doImport(context, result.getOrThrow())
+                } else {
+                    retryTarget = RetryTarget.WEB
+                    _uiState.value = _uiState.value.copy(
+                        isDownloading = false,
+                        statusMessage = text(
+                            R.string.status_download_failed_retry,
+                            result.exceptionOrNull()?.message.orEmpty()
+                        ),
+                        canRetry = true
+                    )
+                }
+            } catch (e: Exception) {
+                retryTarget = RetryTarget.WEB
                 _uiState.value = _uiState.value.copy(
                     isDownloading = false,
-                    statusMessage = "下载失败: ${result.exceptionOrNull()?.message}，请重试"
+                    statusMessage = text(
+                        R.string.status_download_failed_retry,
+                        e.message.orEmpty()
+                    ),
+                    canRetry = true
                 )
+            } finally {
+                downloadInFlight.set(false)
             }
         }
+        return true
     }
 
     private suspend fun doImport(context: Context, zipFile: File) {
@@ -236,7 +337,8 @@ class JmDownloadViewModel(
         } catch (e: Exception) {
             _uiState.value = _uiState.value.copy(
                 isDownloading = false,
-                statusMessage = "导入失败: ${e.message}"
+                statusMessage = text(R.string.status_import_failed, e.message.orEmpty()),
+                canRetry = true
             )
         }
     }
@@ -244,21 +346,34 @@ class JmDownloadViewModel(
     fun overwriteDuplicate(context: Context) {
         val zipFile = pendingZipFile ?: return
         val zipName = pendingZipName
+        if (!downloadInFlight.compareAndSet(false, true)) return
         _uiState.value = _uiState.value.copy(
             isDownloading = true,
             showDuplicateDialog = false,
-            statusMessage = "覆盖导入中..."
+            statusMessage = text(R.string.status_overwrite_importing),
+            canRetry = false
         )
         viewModelScope.launch(Dispatchers.IO) {
-            // Delete old comic first
-            val list = repository.allComics
-            val old = list.first().find { it.name == zipName }
-            if (old != null) {
-                repository.deleteComic(old.id)
-                File(old.directoryPath).deleteRecursively()
-                File(old.coverPath).delete()
+            try {
+                // Delete old comic first
+                val list = repository.allComics
+                val old = list.first().find { it.name == zipName }
+                if (old != null) {
+                    repository.deleteComic(old.id)
+                    File(old.directoryPath).deleteRecursively()
+                    File(old.coverPath).delete()
+                }
+                finishImport(context, zipFile, zipName)
+            } catch (e: Exception) {
+                retryTarget = RetryTarget.WEB
+                _uiState.value = _uiState.value.copy(
+                    isDownloading = false,
+                    statusMessage = text(R.string.status_import_failed, e.message.orEmpty()),
+                    canRetry = true
+                )
+            } finally {
+                downloadInFlight.set(false)
             }
-            finishImport(context, zipFile, zipName)
         }
     }
 
@@ -286,31 +401,49 @@ class JmDownloadViewModel(
             repository.insertComic(comic)
             _uiState.value = _uiState.value.copy(
                 isDownloading = false,
-                statusMessage = "《$zipName》已加入书架！"
+                statusMessage = text(R.string.status_added_to_library, zipName),
+                canRetry = false
             )
             zipFile.delete()
             lastDownloadUrl = ""
+            retryTarget = null
         } else {
             _uiState.value = _uiState.value.copy(
                 isDownloading = false,
-                statusMessage = "导入失败：ZIP 中没有图片"
+                statusMessage = text(R.string.status_zip_has_no_images),
+                canRetry = true
             )
         }
     }
 
     fun retryDownload(context: Context) {
-        if (lastDownloadUrl.isNotBlank()) {
-            val cookies = CookieManager.getInstance().getCookie(lastDownloadUrl) ?: ""
-            downloadAndImport(context, cookies)
-        } else {
-            _uiState.value = _uiState.value.copy(
-                statusMessage = "请先触发下载再重试"
-            )
+        when (retryTarget) {
+            RetryTarget.NATIVE -> startNativeDownload(lastNativeAlbumId)
+            RetryTarget.WEB -> {
+                if (lastDownloadUrl.isNotBlank()) {
+                    val cookies = CookieManager.getInstance().getCookie(lastDownloadUrl) ?: ""
+                    downloadAndImport(context, cookies)
+                } else {
+                    retryTarget = null
+                    _uiState.value = _uiState.value.copy(
+                        statusMessage = text(R.string.status_trigger_download_first),
+                        canRetry = false
+                    )
+                }
+            }
+            null -> {
+                _uiState.value = _uiState.value.copy(
+                    statusMessage = text(R.string.status_trigger_download_first),
+                    canRetry = false
+                )
+            }
         }
     }
 
     fun resetState() {
         lastDownloadUrl = ""
+        lastNativeAlbumId = ""
+        retryTarget = null
         _uiState.value = DownloadUiState(
             currentUrl = _uiState.value.currentUrl,
             inputUrl = _uiState.value.inputUrl

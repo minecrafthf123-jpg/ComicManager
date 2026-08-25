@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.view.MotionEvent
 import android.webkit.*
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -17,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -24,6 +26,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import com.comicmanager.R
 import com.comicmanager.download.jm.JmBrowseSection
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -42,6 +45,13 @@ fun JmDownloadScreen(
     var isWebViewReady by remember { mutableStateOf(false) }
     var manualMode by remember { mutableStateOf(false) }
     var browseMode by remember { mutableStateOf(true) }
+    val manualClickRecorded = stringResource(R.string.manual_click_recorded)
+    val copiedMessage = stringResource(R.string.status_copied)
+    val captchaTimeoutMessage = stringResource(R.string.status_captcha_timeout)
+
+    LaunchedEffect(context) {
+        viewModel.setAppContext(context)
+    }
 
     LaunchedEffect(webView) {
         val wv = webView ?: return@LaunchedEffect
@@ -72,8 +82,8 @@ fun JmDownloadScreen(
                     MotionEvent.ACTION_UP -> {
                         if (kotlin.math.abs(e.x - dx) < 30 && kotlin.math.abs(e.y - dy) < 30) {
                             manualMode = false
-                            viewModel.onJsDownloadClickResult("手动点击已记录")
-                            retryCaptcha(wv, scope, viewModel)
+                            viewModel.onJsDownloadClickResult(manualClickRecorded)
+                            retryCaptcha(wv, scope, viewModel, captchaTimeoutMessage)
                         }
                     }
                 }
@@ -98,13 +108,13 @@ fun JmDownloadScreen(
                 FilterChip(
                     selected = browseMode,
                     onClick = { browseMode = true },
-                    label = { Text("在线浏览") }
+                    label = { Text(stringResource(R.string.online_browse)) }
                 )
                 Spacer(Modifier.width(8.dp))
                 FilterChip(
                     selected = !browseMode,
                     onClick = { browseMode = false },
-                    label = { Text("网页") }
+                    label = { Text(stringResource(R.string.web)) }
                 )
                 Spacer(Modifier.width(16.dp))
                 if (!browseMode) {
@@ -114,9 +124,9 @@ fun JmDownloadScreen(
                         wv?.clearCache(true)
                         wv?.loadUrl(state.currentUrl)
                         isWebViewReady = false
-                    }) { Text("刷新") }
+                    }) { Text(stringResource(R.string.action_refresh)) }
                 }
-                TextButton(onClick = onBack) { Text("返回") }
+                TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
             }
 
             if (browseMode) {
@@ -177,7 +187,7 @@ fun JmDownloadScreen(
                             contentAlignment = Alignment.TopCenter
                         ) {
                             Text(
-                                "请点击页面中的下载按钮",
+                                stringResource(R.string.manual_download_hint),
                                 color = Color.White,
                                 style = MaterialTheme.typography.titleMedium,
                                 modifier = Modifier
@@ -221,7 +231,7 @@ fun JmDownloadScreen(
                             )
                         }
                         Spacer(Modifier.height(12.dp))
-                        TextButton(onClick = { viewModel.cancelNativeDownload() }) { Text("取消") }
+                        TextButton(onClick = { viewModel.cancelNativeDownload() }) { Text(stringResource(R.string.action_cancel)) }
                     }
                 }
             }
@@ -244,18 +254,18 @@ fun JmDownloadScreen(
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f)
                     )
-                    if (state.statusMessage.contains("失败") || state.statusMessage.contains("重试")) {
-                        TextButton(onClick = { viewModel.retryDownload(context) }) { Text("重试") }
+                    if (state.canRetry) {
+                        TextButton(onClick = { viewModel.retryDownload(context) }) { Text(stringResource(R.string.action_retry)) }
                     }
                     TextButton(onClick = {
                         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        cm.setPrimaryClip(ClipData.newPlainText("debug", state.statusMessage))
-                        viewModel.onJsDownloadClickResult("已复制")
+                        cm.setPrimaryClip(ClipData.newPlainText(context.getString(R.string.app_name), state.statusMessage))
+                        Toast.makeText(context, copiedMessage, Toast.LENGTH_SHORT).show()
                     }) {
-                        Text("复制", style = MaterialTheme.typography.labelSmall)
+                        Text(stringResource(R.string.action_copy), style = MaterialTheme.typography.labelSmall)
                     }
                     IconButton(onClick = { viewModel.resetState() }, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.Filled.Close, "关闭", modifier = Modifier.size(16.dp))
+                        Icon(Icons.Filled.Close, stringResource(R.string.action_close), modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -265,13 +275,13 @@ fun JmDownloadScreen(
     if (state.showDuplicateDialog) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissDuplicateDialog() },
-            title = { Text("漫画已存在") },
-            text = { Text("书架中已有" + state.duplicateComicName + "，是否覆盖？") },
+            title = { Text(stringResource(R.string.comic_exists)) },
+            text = { Text(stringResource(R.string.duplicate_comic_message, state.duplicateComicName)) },
             confirmButton = {
-                TextButton(onClick = { viewModel.overwriteDuplicate(context) }) { Text("覆盖") }
+                TextButton(onClick = { viewModel.overwriteDuplicate(context) }) { Text(stringResource(R.string.action_overwrite)) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissDuplicateDialog() }) { Text("跳过") }
+                TextButton(onClick = { viewModel.dismissDuplicateDialog() }) { Text(stringResource(R.string.action_skip)) }
             }
         )
     }
@@ -279,18 +289,18 @@ fun JmDownloadScreen(
     if (state.showCaptchaHelp) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissCaptchaHelp() },
-            title = { Text("验证码") },
-            text = { Text("检测到验证码，已尝试自动填写。如果失败请手动完成。") },
+            title = { Text(stringResource(R.string.captcha)) },
+            text = { Text(stringResource(R.string.captcha_help)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.dismissCaptchaHelp()
                     webView?.evaluateJavascript(JS_SOLVE_CAPTCHA) { r ->
                         viewModel.onJsCaptchaResult(r?.trim('"') ?: "")
                     }
-                }) { Text("再试一次") }
+                }) { Text(stringResource(R.string.action_try_again)) }
             },
             dismissButton = {
-                TextButton(onClick = { viewModel.dismissCaptchaHelp() }) { Text("关闭") }
+                TextButton(onClick = { viewModel.dismissCaptchaHelp() }) { Text(stringResource(R.string.action_close)) }
             }
         )
     }
@@ -317,7 +327,12 @@ private fun dispatchTap(webView: WebView, viewX: Float, viewY: Float) {
     u.recycle()
 }
 
-private fun retryCaptcha(webView: WebView, scope: kotlinx.coroutines.CoroutineScope, viewModel: JmDownloadViewModel) {
+private fun retryCaptcha(
+    webView: WebView,
+    scope: kotlinx.coroutines.CoroutineScope,
+    viewModel: JmDownloadViewModel,
+    timeoutMessage: String
+) {
     scope.launch {
         var solved = false
         for (i in 1..8) {
@@ -330,7 +345,7 @@ private fun retryCaptcha(webView: WebView, scope: kotlinx.coroutines.CoroutineSc
                     viewModel.onJsCaptchaResult(v)
                 }
                 if (i == 8 && !solved) {
-                    viewModel.onJsCaptchaResult("验证码超时，请手动操作")
+                    viewModel.onJsDownloadClickResult(timeoutMessage)
                 }
             }
         }

@@ -14,10 +14,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.statusBarsPadding
 import coil.compose.SubcomposeAsyncImage
+import com.comicmanager.R
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmComment
 
@@ -30,6 +33,7 @@ fun JmDetailScreen(
     isBusy: Boolean,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var album by remember(albumId) { mutableStateOf<JmAlbum?>(null) }
     var error by remember(albumId) { mutableStateOf<String?>(null) }
     var tab by remember(albumId) { mutableIntStateOf(0) }
@@ -42,12 +46,12 @@ fun JmDetailScreen(
         try {
             val loadedAlbum = onGetDetail(albumId)
             check(loadedAlbum.id.trim() == albumId.trim()) {
-                "接口返回了 JM${loadedAlbum.id}，与请求的 JM$albumId 不一致"
+                context.getString(R.string.detail_id_mismatch, loadedAlbum.id, albumId)
             }
             album = loadedAlbum
             android.util.Log.d("JmLink", "getAlbum返回 id=" + (album?.id) + " title=" + (album?.title ?: "").substring(0, Math.min(30, (album?.title ?: "").length)))
         } catch (e: Exception) {
-            error = "加载失败: " + (e.message ?: "")
+            error = context.getString(R.string.load_failed, e.message.orEmpty())
         }
     }
 
@@ -57,7 +61,7 @@ fun JmDetailScreen(
                 comments = onGetComments(albumId, 1)
                 commentsLoaded = true
             } catch (e: Exception) {
-                commentsError = "评论加载失败: " + (e.message ?: "")
+                commentsError = context.getString(R.string.comments_load_failed, e.message.orEmpty())
             }
         }
     }
@@ -75,7 +79,7 @@ fun JmDetailScreen(
             ) {
                 Text(error!!, color = MaterialTheme.colorScheme.error)
                 Spacer(Modifier.height(12.dp))
-                TextButton(onClick = onBack) { Text("返回") }
+                TextButton(onClick = onBack) { Text(stringResource(R.string.action_back)) }
             }
         } else {
             val a = album!!
@@ -115,7 +119,7 @@ fun JmDetailScreen(
                             ) {
                                 Icon(
                                     Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "返回",
+                                    contentDescription = stringResource(R.string.action_back),
                                     tint = Color.White
                                 )
                             }
@@ -149,7 +153,7 @@ fun JmDetailScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF0672A))
                         ) {
                             Text(
-                                if (isBusy) "下载中..." else "下载到书架",
+                                stringResource(if (isBusy) R.string.downloading else R.string.download_to_library),
                                 style = MaterialTheme.typography.titleMedium
                             )
                         }
@@ -160,9 +164,9 @@ fun JmDetailScreen(
                             selectedTabIndex = tab,
                             containerColor = MaterialTheme.colorScheme.surface
                         ) {
-                            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("漫画介绍") })
-                            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("目录") })
-                            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("评论") })
+                            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.tab_introduction)) })
+                            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.tab_catalog)) })
+                            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text(stringResource(R.string.tab_comments)) })
                         }
                     }
 
@@ -176,18 +180,18 @@ fun JmDetailScreen(
                                 val totalPages = a.pageCount.takeIf { it > 0 }
                                     ?: (a.images?.size ?: 0).takeIf { it > 0 }
                                     ?: (a.photoMetas?.size ?: 0)
-                                StatItem(Modifier.weight(1f), "${a.likes ?: "0"}", "喜欢")
-                                StatItem(Modifier.weight(1f), "${a.views ?: "0"}", "观看")
-                                StatItem(Modifier.weight(1f), "$totalPages", "页数")
+                                StatItem(Modifier.weight(1f), "${a.likes ?: "0"}", stringResource(R.string.stat_likes))
+                                StatItem(Modifier.weight(1f), "${a.views ?: "0"}", stringResource(R.string.stat_views))
+                                StatItem(Modifier.weight(1f), "$totalPages", stringResource(R.string.stat_pages))
                             }
                         }
                         item {
                             Column(Modifier.padding(horizontal = 16.dp)) {
-                                Text("禁漫车", style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.jm_identifier), style = MaterialTheme.typography.titleMedium)
                                 Spacer(Modifier.height(6.dp))
                                 Text("JM" + a.id, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.height(16.dp))
-                                Text("描述", style = MaterialTheme.typography.titleMedium)
+                                Text(stringResource(R.string.description), style = MaterialTheme.typography.titleMedium)
                                 Spacer(Modifier.height(6.dp))
                                 Text(
                                     a.description ?: a.title ?: "",
@@ -196,13 +200,13 @@ fun JmDetailScreen(
                                 )
                                 Spacer(Modifier.height(16.dp))
                                 if (!a.tags.isNullOrEmpty()) {
-                                    Text("标签", style = MaterialTheme.typography.titleMedium)
+                                    Text(stringResource(R.string.tags), style = MaterialTheme.typography.titleMedium)
                                     Spacer(Modifier.height(8.dp))
                                     FlowTagChips(a.tags)
                                     Spacer(Modifier.height(16.dp))
                                 }
                                 if (!a.authors.isNullOrEmpty()) {
-                                    Text("作者", style = MaterialTheme.typography.titleMedium)
+                                    Text(stringResource(R.string.authors), style = MaterialTheme.typography.titleMedium)
                                     Spacer(Modifier.height(8.dp))
                                     FlowTagChips(a.authors)
                                     Spacer(Modifier.height(16.dp))
@@ -213,8 +217,8 @@ fun JmDetailScreen(
                         items(a.photoMetas.size) { idx ->
                             val meta = a.photoMetas[idx]
                             ListItem(
-                                headlineContent = { Text(meta.title ?: "第${meta.sortOrder}话") },
-                                supportingContent = { Text("ID: " + meta.id) },
+                                headlineContent = { Text(meta.title ?: stringResource(R.string.chapter_default, meta.sortOrder.toString())) },
+                                supportingContent = { Text(stringResource(R.string.item_id, meta.id)) },
                                 trailingContent = { Text("#" + (idx + 1)) }
                             )
                         }
@@ -234,20 +238,24 @@ fun JmDetailScreen(
                         } else if (comments.isEmpty()) {
                             item {
                                 Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                                    Text("暂无评论")
+                                    Text(stringResource(R.string.no_comments))
                                 }
                             }
                         } else {
                             items(comments.size) { idx ->
                                 val c = comments[idx]
                                 ListItem(
-                                    headlineContent = { Text(c.nickname ?: c.username ?: "匿名", maxLines = 1) },
+                                    headlineContent = { Text(c.nickname ?: c.username ?: stringResource(R.string.anonymous), maxLines = 1) },
                                     supportingContent = {
                                         Column {
                                             Text(c.content ?: "", style = MaterialTheme.typography.bodySmall)
                                             Spacer(Modifier.height(4.dp))
                                             Text(
-                                                "${c.postDate ?: ""} · ${c.likes}赞",
+                                                stringResource(
+                                                    R.string.comment_likes,
+                                                    c.postDate.orEmpty(),
+                                                    c.likes.toString()
+                                                ),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )

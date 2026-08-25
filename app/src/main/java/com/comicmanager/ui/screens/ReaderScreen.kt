@@ -11,8 +11,8 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,10 +20,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.comicmanager.R
 import com.comicmanager.ui.viewmodel.ReaderViewModel
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -53,7 +55,7 @@ fun ReaderScreen(
                     IconButton(onClick = onBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+                            contentDescription = stringResource(R.string.action_back)
                         )
                     }
                 },
@@ -65,8 +67,10 @@ fun ReaderScreen(
                     )
                     IconButton(onClick = { viewModel.toggleMode() }) {
                         Icon(
-                            imageVector = if (state.isPagerMode) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowRight,
-                            contentDescription = if (state.isPagerMode) "切换滚动模式" else "切换翻页模式"
+                            imageVector = if (state.isPagerMode) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = stringResource(
+                                if (state.isPagerMode) R.string.switch_scroll_mode else R.string.switch_page_mode
+                            )
                         )
                     }
                 },
@@ -95,7 +99,7 @@ fun ReaderScreen(
                     .padding(paddingValues),
                 contentAlignment = Alignment.Center
             ) {
-                Text("没有图片", style = MaterialTheme.typography.bodyLarge)
+                Text(stringResource(R.string.no_images), style = MaterialTheme.typography.bodyLarge)
             }
         } else {
             AnimatedContent(
@@ -219,7 +223,7 @@ private fun ComicPageImage(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "加载失败",
+                    text = stringResource(R.string.image_load_failed),
                     color = Color.Gray,
                     textAlign = TextAlign.Center
                 )

@@ -3,6 +3,7 @@ package com.comicmanager.download.jm
 import android.annotation.SuppressLint
 import android.content.Context
 import androidx.compose.runtime.*
+import com.comicmanager.R
 import com.comicmanager.data.ComicRepository
 import com.comicmanager.model.Comic
 import com.comicmanager.util.JmClientFactory
@@ -32,6 +33,11 @@ data class JmSearchItem(
     val author: String
 )
 
+data class JmNativeDownloadResult(
+    val comicName: String,
+    val pageCount: Int
+)
+
 class JmNativeDownloader(
     private val repository: ComicRepository
 ) {
@@ -57,13 +63,13 @@ class JmNativeDownloader(
 
     // java.nio.file is backported to API 24/25 by desugar_jdk_libs_nio.
     @SuppressLint("NewApi")
-    suspend fun downloadAlbum(context: Context, albumId: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun downloadAlbum(context: Context, albumId: String): Result<JmNativeDownloadResult> = withContext(Dispatchers.IO) {
         cancelled = false
         try {
-            update("获取漫画信息...")
+            update(context.getString(R.string.native_fetching_info))
             val c = getClient()
             val album: JmAlbum = c.getAlbum(albumId)
-            if (cancelled) return@withContext Result.failure(Exception("已取消"))
+            if (cancelled) return@withContext Result.failure(Exception(context.getString(R.string.native_cancelled)))
 
             val comicName = (album.title ?: "JM_$albumId")
                 .replace(Regex("[/\\\\:*?\"<>|]"), "_")
@@ -79,10 +85,10 @@ class JmNativeDownloader(
                     .withPath(Paths.get(saveDir.absolutePath))
                     .withProgress { p ->
                         if (cancelled) {
-                            throw kotlinx.coroutines.CancellationException("用户取消下载")
+                            throw kotlinx.coroutines.CancellationException(context.getString(R.string.native_user_cancelled))
                         }
                         update(
-                            phase = "下载图片",
+                            phase = context.getString(R.string.native_downloading_images),
                             current = p.completedImages(),
                             total = p.totalImages(),
                             message = p.photoTitle() ?: ""
@@ -90,9 +96,9 @@ class JmNativeDownloader(
                     }
                     .execute()
             } catch (_: kotlinx.coroutines.CancellationException) {
-                return@withContext Result.failure(Exception("已取消"))
+                return@withContext Result.failure(Exception(context.getString(R.string.native_cancelled)))
             }
-            if (cancelled) return@withContext Result.failure(Exception("已取消"))
+            if (cancelled) return@withContext Result.failure(Exception(context.getString(R.string.native_cancelled)))
 
             val imgFiles = mutableListOf<File>()
             saveDir.walkTopDown().forEach { f ->
@@ -105,8 +111,10 @@ class JmNativeDownloader(
             if (imgFiles.isEmpty()) {
                 saveDir.deleteRecursively()
                 val failed = result.failedTasks.entries.firstOrNull()
-                val reason = failed?.value?.message ?: "未知原因"
-                return@withContext Result.failure(Exception("未下载到图片: $reason"))
+                val reason = failed?.value?.message ?: context.getString(R.string.native_unknown_reason)
+                return@withContext Result.failure(
+                    Exception(context.getString(R.string.native_no_images, reason))
+                )
             }
 
             val flatDir = File(context.filesDir, "comics/$comicName")
@@ -117,13 +125,15 @@ class JmNativeDownloader(
             }
             saveDir.deleteRecursively()
 
-            update("导入书架...", imgFiles.size, imgFiles.size)
+            update(context.getString(R.string.native_importing_library), imgFiles.size, imgFiles.size)
             importToLibrary(context, albumId, comicName, flatDir)
-            _state.value = JmNativeState()
-            Result.success("《$comicName》共 ${imgFiles.size} 页已加入书架")
+            Result.success(JmNativeDownloadResult(comicName, imgFiles.size))
         } catch (e: Exception) {
-            _state.value = JmNativeState()
             Result.failure(e)
+        } finally {
+            // Every exit path, including the labelled early returns above, must
+            // release the UI's running state without changing the returned Result.
+            _state.value = JmNativeState()
         }
     }
 
@@ -177,7 +187,8 @@ class JmNativeDownloader(
     private fun importToLibrary(context: Context, albumId: String, comicName: String, dir: File): File {
         val images = dir.listFiles()?.filter {
             it.extension.lowercase() in setOf("webp", "jpg", "jpeg", "png")
-        }?.sortedBy { it.name } ?: throw Exception("目录为空")
+        }?.sortedBy { it.name }
+            ?: throw Exception(context.getString(R.string.native_empty_directory))
 
         val coverDir = File(context.filesDir, "covers")
         coverDir.mkdirs()

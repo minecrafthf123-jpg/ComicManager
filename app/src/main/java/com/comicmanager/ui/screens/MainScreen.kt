@@ -3,8 +3,10 @@ package com.comicmanager.ui.screens
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -33,12 +35,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.os.LocaleListCompat
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.comicmanager.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.comicmanager.model.Comic
@@ -50,6 +57,12 @@ private enum class ComicActionDialogMode {
     ACTIONS,
     BIND_JM_ID,
     DELETE_CONFIRMATION
+}
+
+private enum class LanguageChoice(@StringRes val labelRes: Int, val languageTags: String) {
+    SYSTEM(R.string.language_follow_system, ""),
+    SIMPLIFIED_CHINESE(R.string.language_simplified_chinese, "zh-CN"),
+    ENGLISH(R.string.language_english, "en")
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class, ExperimentalMaterialApi::class)
@@ -79,6 +92,7 @@ fun MainScreen(
     var actionDialogMode by remember { mutableStateOf(ComicActionDialogMode.ACTIONS) }
     var bindText by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
 
     val duplicateJmIds = remember(allComics) {
@@ -115,7 +129,7 @@ fun MainScreen(
                         TextField(
                             value = searchQuery,
                             onValueChange = { viewModel.updateSearchQuery(it) },
-                            placeholder = { Text("搜索漫画名称...") },
+                            placeholder = { Text(stringResource(R.string.search_comics_hint)) },
                             singleLine = true,
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
@@ -131,27 +145,29 @@ fun MainScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
-                        Text("漫画管理器")
+                        Text(stringResource(R.string.app_name))
                     }
                 },
                 actions = {
                     IconButton(onClick = { viewModel.toggleSearch() }) {
                         Icon(
                             if (isSearchActive) Icons.Filled.Close else Icons.Filled.Search,
-                            contentDescription = if (isSearchActive) "关闭搜索" else "搜索",
+                            contentDescription = stringResource(
+                                if (isSearchActive) R.string.close_search else R.string.action_search
+                            ),
                             tint = MaterialTheme.colorScheme.onPrimary
                         )
                     }
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
-                            Icon(Icons.Filled.ArrowDropDown, contentDescription = "排序", tint = MaterialTheme.colorScheme.onPrimary)
+                            Icon(Icons.Filled.ArrowDropDown, contentDescription = stringResource(R.string.sort), tint = MaterialTheme.colorScheme.onPrimary)
                         }
                         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                             SortMode.entries.forEach { mode ->
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(mode.label)
+                                            Text(stringResource(mode.labelRes))
                                             if (mode == currentSortMode) { Spacer(Modifier.width(8.dp)); Text("✓", color = MaterialTheme.colorScheme.primary) }
                                         }
                                     },
@@ -160,42 +176,54 @@ fun MainScreen(
                             }
                             HorizontalDivider()
                             DropdownMenuItem(
-                                text = { Text(if (selectMode) "取消选择" else "选择漫画") },
+                                text = { Text(stringResource(R.string.language)) },
+                                onClick = {
+                                    showSortMenu = false
+                                    showLanguageDialog = true
+                                }
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(stringResource(if (selectMode) R.string.cancel_selection else R.string.select_comics)) },
                                 onClick = { showSortMenu = false; viewModel.toggleSelectMode() }
                             )
                             DropdownMenuItem(
-                                text = { Text("批量导入ID压缩包") },
+                                text = { Text(stringResource(R.string.batch_import_id_archives)) },
                                 onClick = { showSortMenu = false; zipPickerLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) }
                             )
                             DropdownMenuItem(
-                                text = { Text("删除重复漫画", color = MaterialTheme.colorScheme.error) },
+                                text = { Text(stringResource(R.string.delete_duplicate_comics), color = MaterialTheme.colorScheme.error) },
                                 onClick = {
                                     showSortMenu = false
                                     val count = viewModel.deleteDuplicates()
-                                    scope.launch { snackbarHostState.showSnackbar(message = "已删除 $count 本重复漫画") }
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar(
+                                            message = context.getString(R.string.duplicates_deleted, count)
+                                        )
+                                    }
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("导出全部") },
+                                text = { Text(stringResource(R.string.export_all)) },
                                 onClick = {
                                     showSortMenu = false
                                     viewModel.exportAll(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("按ZIP编号批量重命名") },
+                                text = { Text(stringResource(R.string.batch_rename_from_zip)) },
                                 onClick = {
                                     showSortMenu = false
-                                    viewModel.renameNumericComics { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
+                                    viewModel.renameNumericComics(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
                                 }
                             )
                         }
                     }
                     IconButton(onClick = onHistoryClick) {
-                        Icon(Icons.Filled.DateRange, contentDescription = "阅读历史", tint = MaterialTheme.colorScheme.onPrimary)
+                        Icon(Icons.Filled.DateRange, contentDescription = stringResource(R.string.reading_history), tint = MaterialTheme.colorScheme.onPrimary)
                     }
                     IconButton(onClick = onJmDownloadClick) {
-                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "JM下载", tint = MaterialTheme.colorScheme.onPrimary)
+                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = stringResource(R.string.jmcomic_download), tint = MaterialTheme.colorScheme.onPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -211,13 +239,13 @@ fun MainScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.height(16.dp))
-                    Text("正在导入漫画...")
+                    Text(stringResource(R.string.importing_comics))
                 }
             }
         } else if (displayComics.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                 Text(
-                    if (isSearchActive) "没有匹配的漫画" else "还没有漫画\n点排序→导入漫画",
+                    stringResource(if (isSearchActive) R.string.no_search_results else R.string.no_comics_sort_hint),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -254,16 +282,25 @@ fun MainScreen(
                 if (selectMode) {
                     Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shadowElevation = 8.dp) {
                         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { viewModel.toggleSelectMode() }) { Text("取消", color = MaterialTheme.colorScheme.error) }
+                            TextButton(onClick = { viewModel.toggleSelectMode() }) { Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.error) }
                             TextButton(onClick = {
                                 if (selectedIds.size == displayComics.size) viewModel.clearSelection() else viewModel.selectAll()
-                            }) { Text(if (selectedIds.size == displayComics.size) "反选" else "全选") }
-                            Text("已选 ${selectedIds.size}", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-                            TextButton(onClick = { viewModel.exportSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } }) { Text("导出") }
-                            TextButton(onClick = { viewModel.shareSelected(context) }) { Text("分享") }
+                            }) { Text(stringResource(if (selectedIds.size == displayComics.size) R.string.invert_selection else R.string.select_all)) }
+                            Text(
+                                pluralStringResource(
+                                    R.plurals.selected_count,
+                                    selectedIds.size,
+                                    selectedIds.size
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                                textAlign = TextAlign.Center
+                            )
+                            TextButton(onClick = { viewModel.exportSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } }) { Text(stringResource(R.string.action_export)) }
+                            TextButton(onClick = { viewModel.shareSelected(context) }) { Text(stringResource(R.string.action_share)) }
                             TextButton(onClick = {
                                 viewModel.deleteSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
-                            }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                            }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
                         }
                     }
                 }
@@ -276,7 +313,8 @@ fun MainScreen(
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(Modifier.size(48.dp), color = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(16.dp))
-                        Text("正在${bulkProgress.label}...", style = MaterialTheme.typography.titleMedium)
+                        val progressLabel = bulkProgress.labelRes?.let { stringResource(it) }.orEmpty()
+                        Text(stringResource(R.string.progress_running, progressLabel), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(12.dp))
                         LinearProgressIndicator(progress = { bulkProgress.current.toFloat() / bulkProgress.total.toFloat() }, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(8.dp))
@@ -285,6 +323,52 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    if (showLanguageDialog) {
+        val currentTags = AppCompatDelegate.getApplicationLocales().toLanguageTags()
+        val selectedLanguage = when {
+            currentTags.startsWith("zh", ignoreCase = true) -> LanguageChoice.SIMPLIFIED_CHINESE
+            currentTags.startsWith("en", ignoreCase = true) -> LanguageChoice.ENGLISH
+            else -> LanguageChoice.SYSTEM
+        }
+        AlertDialog(
+            onDismissRequest = { showLanguageDialog = false },
+            title = { Text(stringResource(R.string.language)) },
+            text = {
+                Column {
+                    LanguageChoice.entries.forEach { choice ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val locales = if (choice.languageTags.isEmpty()) {
+                                        LocaleListCompat.getEmptyLocaleList()
+                                    } else {
+                                        LocaleListCompat.forLanguageTags(choice.languageTags)
+                                    }
+                                    AppCompatDelegate.setApplicationLocales(locales)
+                                    showLanguageDialog = false
+                                }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = choice == selectedLanguage,
+                                onClick = null
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(stringResource(choice.labelRes))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showLanguageDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 
     showActionMenu?.let { comic ->
@@ -313,8 +397,8 @@ fun MainScreen(
                 Text(
                     when (actionDialogMode) {
                         ComicActionDialogMode.ACTIONS -> comic.name
-                        ComicActionDialogMode.BIND_JM_ID -> "绑定JM编号"
-                        ComicActionDialogMode.DELETE_CONFIRMATION -> "确认删除"
+                        ComicActionDialogMode.BIND_JM_ID -> stringResource(R.string.bind_jm_id)
+                        ComicActionDialogMode.DELETE_CONFIRMATION -> stringResource(R.string.delete_confirm_title)
                     },
                     maxLines = 4
                 )
@@ -323,17 +407,18 @@ fun MainScreen(
                 when (actionDialogMode) {
                     ComicActionDialogMode.ACTIONS -> {
                         Column {
-                            Text("选择操作", style = MaterialTheme.typography.bodyMedium)
+                            Text(stringResource(R.string.choose_action), style = MaterialTheme.typography.bodyMedium)
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                currentJmId?.let { "当前JM编号：$it" } ?: "当前未绑定JM编号",
+                                currentJmId?.let { stringResource(R.string.current_jm_id, it) }
+                                    ?: stringResource(R.string.current_jm_id_none),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             if (hasDuplicateJmId) {
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "该编号同时绑定了其他漫画，请先核对并修改。",
+                                    stringResource(R.string.duplicate_jm_id_warning),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error
                                 )
@@ -342,7 +427,7 @@ fun MainScreen(
                                 bindText = currentJmId.orEmpty()
                                 actionDialogMode = ComicActionDialogMode.BIND_JM_ID
                             }) {
-                                Text(if (currentJmId == null) "绑定JM编号" else "修改JM编号")
+                                Text(stringResource(if (currentJmId == null) R.string.bind_jm_id else R.string.modify_jm_id))
                             }
                         }
                     }
@@ -351,9 +436,9 @@ fun MainScreen(
                         Column {
                             Text(
                                 if (hasDuplicateJmId) {
-                                    "当前编号 $currentJmId 与其他漫画重复，请输入正确的JM作品编号："
+                                    stringResource(R.string.duplicate_jm_id_prompt, currentJmId.orEmpty())
                                 } else {
-                                    "请输入正确的JM作品编号："
+                                    stringResource(R.string.enter_jm_id_prompt)
                                 },
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -361,13 +446,13 @@ fun MainScreen(
                             OutlinedTextField(
                                 value = bindText,
                                 onValueChange = { bindText = it.filter(Char::isDigit) },
-                                placeholder = { Text("输入编号，如 1037526") },
+                                placeholder = { Text(stringResource(R.string.jm_id_hint)) },
                                 singleLine = true
                             )
                             if (conflictingComic != null) {
                                 Spacer(Modifier.height(6.dp))
                                 Text(
-                                    "该编号已绑定到《${conflictingComic.name}》",
+                                    stringResource(R.string.jm_id_conflict, conflictingComic.name),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                     maxLines = 2,
@@ -378,7 +463,7 @@ fun MainScreen(
                     }
 
                     ComicActionDialogMode.DELETE_CONFIRMATION -> {
-                        Text("确定要删除 \"${comic.name}\" 吗？此操作不可撤销。")
+                        Text(stringResource(R.string.delete_confirm_message, comic.name))
                     }
                 }
             },
@@ -398,7 +483,7 @@ fun MainScreen(
                                 actionDialogMode = ComicActionDialogMode.BIND_JM_ID
                             }
                         }) {
-                            Text("进入JM详情")
+                            Text(stringResource(R.string.open_jm_details))
                         }
                     }
 
@@ -415,7 +500,7 @@ fun MainScreen(
                                 onJmDetail(enteredJmId)
                             }
                         ) {
-                            Text("绑定并打开")
+                            Text(stringResource(R.string.bind_and_open))
                         }
                     }
 
@@ -429,7 +514,7 @@ fun MainScreen(
                                 contentColor = MaterialTheme.colorScheme.error
                             )
                         ) {
-                            Text("删除")
+                            Text(stringResource(R.string.action_delete))
                         }
                     }
                 }
@@ -440,7 +525,7 @@ fun MainScreen(
                         TextButton(onClick = {
                             actionDialogMode = ComicActionDialogMode.DELETE_CONFIRMATION
                         }) {
-                            Text("删除", color = MaterialTheme.colorScheme.error)
+                            Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error)
                         }
                     }
 
@@ -448,7 +533,7 @@ fun MainScreen(
                         TextButton(onClick = {
                             actionDialogMode = ComicActionDialogMode.ACTIONS
                         }) {
-                            Text("返回")
+                            Text(stringResource(R.string.action_back))
                         }
                     }
 
@@ -456,7 +541,7 @@ fun MainScreen(
                         TextButton(onClick = {
                             actionDialogMode = ComicActionDialogMode.ACTIONS
                         }) {
-                            Text("取消")
+                            Text(stringResource(R.string.action_cancel))
                         }
                     }
                 }

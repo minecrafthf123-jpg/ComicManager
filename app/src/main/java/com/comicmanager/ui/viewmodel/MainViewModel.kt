@@ -4,10 +4,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
+import androidx.annotation.StringRes
 import androidx.core.content.FileProvider
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.comicmanager.R
 import com.comicmanager.data.ComicRepository
 import com.comicmanager.model.Comic
 import com.comicmanager.util.JmIdParser
@@ -25,16 +27,16 @@ data class ImportState(
 
 data class BulkProgress(
     val isRunning: Boolean = false,
-    val label: String = "",
+    @StringRes val labelRes: Int? = null,
     val current: Int = 0,
     val total: Int = 0
 )
 
-enum class SortMode(val label: String) {
-    TIME_DESC("最近导入"),
-    TIME_ASC("最早导入"),
-    NAME_NUM_DESC("数字↓"),
-    NAME_NUM_ASC("数字↑")
+enum class SortMode(@StringRes val labelRes: Int) {
+    TIME_DESC(R.string.sort_recent),
+    TIME_ASC(R.string.sort_oldest),
+    NAME_NUM_DESC(R.string.sort_number_desc),
+    NAME_NUM_ASC(R.string.sort_number_asc)
 }
 
 class MainViewModel(private val repository: ComicRepository) : ViewModel() {
@@ -161,11 +163,12 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
             _importState.value = ImportState(
                 isImporting = false,
                 importMessage = buildList {
-                    if (successCount > 0) add("导入 $successCount 本")
-                    if (repairedCount > 0) add("补全编号 $repairedCount 本")
-                    if (skippedCount > 0) add("跳过重复 $skippedCount 个")
-                    if (failCount > 0) add("失败 $failCount 个")
-                }.joinToString("，").ifBlank { "没有可导入的漫画" }
+                    if (successCount > 0) add(context.getString(R.string.import_summary_imported, successCount))
+                    if (repairedCount > 0) add(context.getString(R.string.import_summary_repaired_ids, repairedCount))
+                    if (skippedCount > 0) add(context.getString(R.string.import_summary_skipped, skippedCount))
+                    if (failCount > 0) add(context.getString(R.string.import_summary_failed, failCount))
+                }.joinToString(context.getString(R.string.list_separator))
+                    .ifBlank { context.getString(R.string.no_importable_comics) }
             )
         }
     }
@@ -196,7 +199,7 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
         return deleted
     }
 
-    fun renameNumericComics(onResult: (String) -> Unit) {
+    fun renameNumericComics(context: Context, onResult: (String) -> Unit) {
         viewModelScope.launch(Dispatchers.IO) {
             val all = repository.allComics.first()
             val repairedPaths = repairLegacyDirectoryPaths(all)
@@ -205,13 +208,13 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
             }
             if (candidates.isEmpty()) {
                 onResult(
-                    if (repairedPaths > 0) "已修复 $repairedPaths 本漫画的图片路径"
-                    else "没有需要处理的漫画"
+                    if (repairedPaths > 0) context.getString(R.string.paths_repaired, repairedPaths)
+                    else context.getString(R.string.nothing_to_process)
                 )
                 return@launch
             }
             val total = candidates.size
-            _bulkProgress.value = BulkProgress(isRunning = true, label = "重命名", total = total)
+            _bulkProgress.value = BulkProgress(isRunning = true, labelRes = R.string.progress_rename, total = total)
             var renamed = 0
             var failed = 0
             var conflicts = 0
@@ -257,7 +260,7 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
                     processed++
                     _bulkProgress.value = BulkProgress(
                         isRunning = true,
-                        label = "重命名",
+                        labelRes = R.string.progress_rename,
                         current = processed,
                         total = total
                     )
@@ -268,28 +271,28 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
             _bulkProgress.value = BulkProgress()
             onResult(
                 buildList {
-                    add("重命名 $renamed 本")
-                    if (repairedPaths > 0) add("修复路径 $repairedPaths 本")
-                    if (conflicts > 0) add("编号冲突 $conflicts 本")
-                    if (failed > 0) add("查询失败 $failed 本")
-                }.joinToString("，")
+                    add(context.getString(R.string.rename_summary, renamed))
+                    if (repairedPaths > 0) add(context.getString(R.string.paths_repaired_summary, repairedPaths))
+                    if (conflicts > 0) add(context.getString(R.string.id_conflicts_summary, conflicts))
+                    if (failed > 0) add(context.getString(R.string.query_failures_summary, failed))
+                }.joinToString(context.getString(R.string.list_separator))
             )
         }
     }
 
     fun exportAll(context: Context, onResult: (String) -> Unit) {        viewModelScope.launch(Dispatchers.IO) {
             val all = displayComics.value
-            if (all.isEmpty()) { onResult("书架为空"); return@launch }
-            _bulkProgress.value = BulkProgress(isRunning = true, label = "导出", total = all.size)
+            if (all.isEmpty()) { onResult(context.getString(R.string.library_empty)); return@launch }
+            _bulkProgress.value = BulkProgress(isRunning = true, labelRes = R.string.progress_export, total = all.size)
             var count = 0
             val exportDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "漫画管理器")
             exportDir.mkdirs()
             for (comic in all) {
                 try { createComicZip(comic, File(exportDir, exportZipName(comic))); count++ } catch (_: Exception) {}
-                _bulkProgress.value = BulkProgress(isRunning = true, label = "导出", current = count, total = all.size)
+                _bulkProgress.value = BulkProgress(isRunning = true, labelRes = R.string.progress_export, current = count, total = all.size)
             }
             _bulkProgress.value = BulkProgress()
-            onResult("导出完成: $count 本\n保存至 Downloads/漫画管理器")
+            onResult(context.getString(R.string.export_completed_path, count))
         }
     }
 
@@ -298,19 +301,19 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
         if (ids.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             val selected = displayComics.value.filter { it.id in ids }
-            _bulkProgress.value = BulkProgress(isRunning = true, label = "删除", total = selected.size)
+            _bulkProgress.value = BulkProgress(isRunning = true, labelRes = R.string.progress_delete, total = selected.size)
             var count = 0
             for (comic in selected) {
                 repository.deleteComic(comic.id)
                 File(comic.directoryPath).deleteRecursively()
                 File(comic.coverPath).delete()
                 count++
-                _bulkProgress.value = BulkProgress(isRunning = true, label = "删除", current = count, total = selected.size)
+                _bulkProgress.value = BulkProgress(isRunning = true, labelRes = R.string.progress_delete, current = count, total = selected.size)
             }
             _bulkProgress.value = BulkProgress()
             _selectMode.value = false
             _selectedIds.value = emptySet()
-            onResult("已删除 $count 本")
+            onResult(context.getString(R.string.deleted_count, count))
         }
     }
 
@@ -338,18 +341,18 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
         if (ids.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             val selected = displayComics.value.filter { it.id in ids }
-            _bulkProgress.value = BulkProgress(isRunning = true, label = "导出", total = selected.size)
+            _bulkProgress.value = BulkProgress(isRunning = true, labelRes = R.string.progress_export, total = selected.size)
             var count = 0
             val exportDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "漫画管理器")
             exportDir.mkdirs()
             for (comic in selected) {
                 try { createComicZip(comic, File(exportDir, exportZipName(comic))); count++ } catch (_: Exception) {}
-                _bulkProgress.value = BulkProgress(isRunning = true, label = "导出", current = count, total = selected.size)
+                _bulkProgress.value = BulkProgress(isRunning = true, labelRes = R.string.progress_export, current = count, total = selected.size)
             }
             _bulkProgress.value = BulkProgress()
             _selectMode.value = false
             _selectedIds.value = emptySet()
-            onResult("导出完成: $count 本")
+            onResult(context.getString(R.string.export_completed, count))
         }
     }
 
@@ -378,7 +381,7 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
                 putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "分享漫画"))
+            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_comics)))
         }
     }
 

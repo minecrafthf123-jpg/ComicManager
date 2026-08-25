@@ -2,6 +2,7 @@ package com.comicmanager.util
 
 import android.content.Context
 import android.net.Uri
+import com.comicmanager.R
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
@@ -50,13 +51,16 @@ object ZipUtils {
 
             if (imageFiles.isEmpty()) {
                 extractDir.deleteRecursively()
-                ExtractResult(false, errorMessage = "ZIP 文件中未找到图片")
+                ExtractResult(false, errorMessage = context.getString(R.string.zip_no_images))
             } else {
                 imageFiles.sortBy { it.name }
                 ExtractResult(true, imageFiles)
             }
         } catch (e: Exception) {
-            ExtractResult(false, errorMessage = "解压失败: ${e.message}")
+            ExtractResult(
+                false,
+                errorMessage = context.getString(R.string.zip_extract_failed, e.message.orEmpty())
+            )
         }
     }
 

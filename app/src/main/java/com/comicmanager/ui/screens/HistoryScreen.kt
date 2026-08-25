@@ -22,11 +22,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
+import com.comicmanager.R
 import com.comicmanager.model.Comic
 import com.comicmanager.ui.viewmodel.HistoryViewModel
 import kotlinx.coroutines.delay
@@ -46,10 +49,10 @@ fun HistoryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("阅读历史") },
+                title = { Text(stringResource(R.string.reading_history)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -66,7 +69,7 @@ fun HistoryScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    "还没有阅读记录\n先去看看漫画吧",
+                    stringResource(R.string.empty_history),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -153,7 +156,12 @@ private fun HistoryGridItem(comic: Comic, onClick: () -> Unit) {
             )
             if (comic.pageCount > 0) {
                 Text(
-                    "${comic.currentPage}/${comic.pageCount} 页",
+                    pluralStringResource(
+                        R.plurals.page_progress,
+                        comic.pageCount,
+                        comic.currentPage,
+                        comic.pageCount
+                    ),
                     Modifier.fillMaxWidth().padding(horizontal = 6.dp).padding(bottom = 6.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
