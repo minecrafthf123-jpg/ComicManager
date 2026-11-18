@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_v2_drag_hint">Swipe sideways to select a range, or hold and drag. Drag to an edge to scroll.</string>
+</resources>

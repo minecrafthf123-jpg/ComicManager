@@ -328,6 +328,10 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
         _selectedIds.value = current
     }
 
+    fun replaceSelection(ids: Set<Long>) {
+        if (_selectMode.value) _selectedIds.value = ids
+    }
+
     fun selectAll() {
         _selectedIds.value = displayComics.value.map { it.id }.toSet()
     }

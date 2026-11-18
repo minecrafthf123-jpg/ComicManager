@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_v2_api_search">JM 搜索</string>
+    <string name="jm_v2_details">漫画详情</string>
+    <string name="jm_v2_cancelling">正在取消下载…</string>
+    <string name="jm_v2_pages_unknown">未知</string>
+    <string name="jm_v2_invalid_id">漫画编号无效</string>
+    <string name="jm_v2_create_directory_failed">无法创建下载目录</string>
+    <string name="jm_v2_move_failed">无法保存下载的漫画</string>
+</resources>

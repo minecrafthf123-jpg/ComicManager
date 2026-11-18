@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_v2_play">自动播放</string>
+    <string name="reader_v2_pause">暂停</string>
+    <string name="reader_v2_settings">自动播放设置</string>
+    <string name="reader_v2_page_interval">每 %1$d 秒翻页</string>
+    <string name="reader_v2_scroll_speed">滚动速度：%1$s</string>
+    <string name="reader_v2_speed_slowest">很慢</string>
+    <string name="reader_v2_speed_slow">较慢</string>
+    <string name="reader_v2_speed_normal">适中</string>
+    <string name="reader_v2_speed_fast">较快</string>
+    <string name="reader_v2_speed_fastest">很快</string>
+    <string name="reader_v2_playback_hint">触摸漫画即可暂停，阅读至末尾或切到后台会自动停止。</string>
+    <string name="reader_v2_reset_zoom">%1$d%% · 重置缩放</string>
+</resources>

@@ -7,8 +7,6 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.comicmanager.data.AppDatabase
 import com.comicmanager.data.ComicRepository
-import com.google.mlkit.vision.text.TextRecognition
-import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 
 class ComicManagerApp : Application(), ImageLoaderFactory {
 
@@ -19,7 +17,6 @@ class ComicManagerApp : Application(), ImageLoaderFactory {
         super.onCreate()
         val database = AppDatabase.getInstance(this)
         repository = ComicRepository(database.comicDao())
-        TextRecognition.getClient(ChineseTextRecognizerOptions.Builder().build())
     }
 
     override fun newImageLoader(): ImageLoader {

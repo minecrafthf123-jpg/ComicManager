@@ -22,8 +22,8 @@ android {
         applicationId = "com.comicmanager"
         minSdk = 24
         targetSdk = 34
-        versionCode = 3
-        versionName = "1.1"
+        versionCode = 4
+        versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -117,8 +117,6 @@ dependencies {
     implementation("io.github.jukomu:jmcomic-api:1.1.8")
     implementation("io.github.jukomu:jmcomic-core:1.1.8")
     implementation("io.github.jukomu:jmcomic-android-support:1.1.8")
-
-    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
 
     implementation("androidx.core:core-ktx:1.12.0")
 

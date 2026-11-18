@@ -1,5 +1,6 @@
 package com.comicmanager.download.jm
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,6 +9,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +28,7 @@ import com.comicmanager.R
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmComment
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 
 internal fun coverUrlFor(albumId: String): String {
     val domains = listOf(
@@ -32,14 +36,18 @@ internal fun coverUrlFor(albumId: String): String {
         "https://cdn-msp.jmapiproxy2.cc",
         "https://cdn-msp2.jmapiproxy2.cc"
     )
-    val h = albumId.hashCode().let { if (it < 0) -it else it }
+    val h = albumId.hashCode() and Int.MAX_VALUE
     return domains[h % domains.size] + "/media/albums/" + albumId + "_3x4.jpg"
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JmBrowseSection(
+    onBack: () -> Unit,
+    isActive: Boolean,
     onSearch: suspend (String, Int) -> Pair<Int, List<JmSearchItem>>,
     onGetDetail: suspend (String) -> JmAlbum,
+    onGetPageCount: suspend (JmAlbum) -> Int?,
     onGetComments: suspend (String, Int) -> List<JmComment>,
     onEnrichTitles: suspend (List<JmSearchItem>) -> List<JmSearchItem>,
     onDownload: (String) -> Unit,
@@ -75,7 +83,7 @@ fun JmBrowseSection(
             try {
                 val r = onSearch(q, p)
                 total = r.first
-                var newResults = if (p == 1) r.second else results + r.second
+                var newResults = (if (p == 1) r.second else results + r.second).distinctBy { it.id }
                 val blank = newResults.filter { it.name.isBlank() }
                 if (blank.isNotEmpty()) {
                     val enriched = onEnrichTitles(blank)
@@ -85,6 +93,8 @@ fun JmBrowseSection(
                 results = newResults
                 page = p
                 if (r.second.isEmpty() && p == 1) error = context.getString(R.string.no_results)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 error = context.getString(
                     R.string.search_failed,
@@ -95,7 +105,16 @@ fun JmBrowseSection(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = { Text(stringResource(R.string.jm_v2_api_search)) },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
+                }
+            }
+        )
         Row(
             Modifier
                 .fillMaxWidth()
@@ -201,10 +220,12 @@ fun JmBrowseSection(
     }
 
     selected?.let { albumId ->
+        BackHandler(enabled = isActive) { selected = null }
         key(albumId, detailRequestKey) {
             JmDetailScreen(
                 albumId = albumId,
                 onGetDetail = onGetDetail,
+                onGetPageCount = onGetPageCount,
                 onGetComments = onGetComments,
                 onDownload = { id ->
                     onDownload(id)
@@ -213,5 +234,6 @@ fun JmBrowseSection(
                 onBack = { selected = null }
             )
         }
+    }
     }
 }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_v2_api_search">JM search</string>
+    <string name="jm_v2_details">Comic details</string>
+    <string name="jm_v2_cancelling">Cancelling download…</string>
+    <string name="jm_v2_pages_unknown">Unknown</string>
+    <string name="jm_v2_invalid_id">Invalid comic ID</string>
+    <string name="jm_v2_create_directory_failed">Unable to create download directory</string>
+    <string name="jm_v2_move_failed">Unable to save downloaded comic</string>
+</resources>

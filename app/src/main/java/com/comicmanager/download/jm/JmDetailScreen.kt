@@ -18,16 +18,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.statusBarsPadding
 import coil.compose.SubcomposeAsyncImage
 import com.comicmanager.R
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmComment
+import kotlinx.coroutines.CancellationException
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JmDetailScreen(
     albumId: String,
     onGetDetail: suspend (String) -> JmAlbum,
+    onGetPageCount: suspend (JmAlbum) -> Int?,
     onGetComments: suspend (String, Int) -> List<JmComment>,
     onDownload: (String) -> Unit,
     isBusy: Boolean,
@@ -40,6 +42,8 @@ fun JmDetailScreen(
     var comments by remember(albumId) { mutableStateOf<List<JmComment>>(emptyList()) }
     var commentsLoaded by remember(albumId) { mutableStateOf(false) }
     var commentsError by remember(albumId) { mutableStateOf<String?>(null) }
+    var totalPages by remember(albumId) { mutableStateOf<Int?>(null) }
+    var pageCountLoaded by remember(albumId) { mutableStateOf(false) }
 
     LaunchedEffect(albumId) {
         android.util.Log.d("JmLink", "JmDetailScreen albumId=" + albumId)
@@ -50,9 +54,23 @@ fun JmDetailScreen(
             }
             album = loadedAlbum
             android.util.Log.d("JmLink", "getAlbum返回 id=" + (album?.id) + " title=" + (album?.title ?: "").substring(0, Math.min(30, (album?.title ?: "").length)))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             error = context.getString(R.string.load_failed, e.message.orEmpty())
         }
+    }
+
+    LaunchedEffect(album) {
+        val loaded = album ?: return@LaunchedEffect
+        try {
+            totalPages = onGetPageCount(loaded)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            totalPages = null
+        }
+        pageCountLoaded = true
     }
 
     LaunchedEffect(albumId, tab) {
@@ -60,13 +78,27 @@ fun JmDetailScreen(
             try {
                 comments = onGetComments(albumId, 1)
                 commentsLoaded = true
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 commentsError = context.getString(R.string.comments_load_failed, e.message.orEmpty())
             }
         }
     }
 
-    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.jm_v2_details), maxLines = 1) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
+                    }
+                }
+            )
+        }
+    ) { padding ->
+    Box(Modifier.fillMaxSize().padding(padding).background(MaterialTheme.colorScheme.surface)) {
         if (album == null && error == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.size(40.dp))
@@ -110,19 +142,6 @@ fun JmDetailScreen(
                                         )
                                     )
                             )
-                            IconButton(
-                                onClick = onBack,
-                                modifier = Modifier
-                                    .statusBarsPadding()
-                                    .padding(4.dp)
-                                    .align(Alignment.TopStart)
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = stringResource(R.string.action_back),
-                                    tint = Color.White
-                                )
-                            }
                             Column(
                                 Modifier
                                     .align(Alignment.BottomStart)
@@ -177,12 +196,13 @@ fun JmDetailScreen(
                                     .fillMaxWidth()
                                     .padding(vertical = 16.dp)
                             ) {
-                                val totalPages = a.pageCount.takeIf { it > 0 }
-                                    ?: (a.images?.size ?: 0).takeIf { it > 0 }
-                                    ?: (a.photoMetas?.size ?: 0)
                                 StatItem(Modifier.weight(1f), "${a.likes ?: "0"}", stringResource(R.string.stat_likes))
                                 StatItem(Modifier.weight(1f), "${a.views ?: "0"}", stringResource(R.string.stat_views))
-                                StatItem(Modifier.weight(1f), "$totalPages", stringResource(R.string.stat_pages))
+                                StatItem(
+                                    Modifier.weight(1f),
+                                    totalPages?.toString() ?: if (pageCountLoaded) stringResource(R.string.jm_v2_pages_unknown) else "…",
+                                    stringResource(R.string.stat_pages)
+                                )
                             }
                         }
                         item {
@@ -269,6 +289,7 @@ fun JmDetailScreen(
                 }
             }
         }
+    }
     }
 }
 

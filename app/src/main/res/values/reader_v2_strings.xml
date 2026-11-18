@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="reader_v2_play">Auto play</string>
+    <string name="reader_v2_pause">Pause</string>
+    <string name="reader_v2_settings">Auto play settings</string>
+    <string name="reader_v2_page_interval">%1$d s / page</string>
+    <string name="reader_v2_scroll_speed">Scroll speed: %1$s</string>
+    <string name="reader_v2_speed_slowest">Very slow</string>
+    <string name="reader_v2_speed_slow">Slow</string>
+    <string name="reader_v2_speed_normal">Normal</string>
+    <string name="reader_v2_speed_fast">Fast</string>
+    <string name="reader_v2_speed_fastest">Very fast</string>
+    <string name="reader_v2_playback_hint">Touch the comic to pause. Playback stops at the end or when the app leaves the foreground.</string>
+    <string name="reader_v2_reset_zoom">%1$d%% · Reset zoom</string>
+</resources>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_v2_drag_hint">横向滑动或按住拖动可连续勾选，拖到上下边缘可自动滚动</string>
+</resources>

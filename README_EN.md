@@ -2,34 +2,37 @@
 
 [简体中文](README.md) | [English](README_EN.md)
 
-An Android comic app centered first on **JMComic browsing, search, details, and downloads to a local library**, with local file management and reading tools alongside it. It also supports batch-importing ZIP comics, organizing the library, tracking reading progress, and reading in page-by-page or continuous scrolling mode.
+An Android comic manager with **JMComic API search, details, and downloads to a local library**, ZIP imports, library organization, zoomable reading, automatic playback, and reading progress.
 
-Current version: **1.1** (`versionCode 3`)
+Current version: **2.0** (`versionCode 4`)
 
 System requirement: **Android 7.0 (API 24) or later**
 
 ## Key Features
 
-- Browse and search JMComic comics, view comic details, and download comics into the local library
+- Search JMComic using its API, view comic details, and download comics into the local library
 - Use the interface in Simplified Chinese or English, following the system language or a manual in-app selection
 - Import one or more ZIP files through the system file picker, automatically extract images, and generate covers
-- Search and sort your library, select items in batches, remove duplicates, export, and share
-- Read using horizontal page navigation or vertical continuous scrolling, with automatic reading-position saving
+- Search and sort your library, select items with drag gestures, remove duplicates, export, and share
+- Read with vertical continuous scrolling by default, pinch to zoom and pan, or switch to horizontal pages
+- Automatically scroll or turn pages at an adjustable speed, with saved reading progress
 - Reading history
 - Detect associated IDs from ZIP filenames, check for duplicate bindings, and batch-organize titles
 - Manually bind or edit associated IDs and open the corresponding details from the library
 
 Comic images, covers, and the database are all stored locally on the device. The project does not automatically upload personal library data.
 
-## Highlights in v1.1
+## Highlights in v2.0
 
-- Improved batch importing, deduplication, and batch renaming for ZIP files containing associated IDs
-- Preserved associated IDs in exported filenames to make future re-imports and relationship recovery easier
-- Fixed an issue where opening details by long-pressing a library item could reuse stale page state
-- Improved the ID binding dialog and duplicate-ID conflict checks
-- Repaired legacy comic directory paths and improved stability during batch operations
-- Added stronger exception handling during JMComic client initialization to reduce crashes at startup or during batch processing
-- Added Simplified Chinese and English interfaces with an in-app language selector
+- Removed the embedded website browser and web downloads; API search, details, and native downloads remain
+- Kept a fixed back button available throughout loading, downloads, errors, and completed downloads
+- Made continuous scrolling the default and added pinch zoom and panning
+- Added automatic scrolling and timed page turns with adjustable speed, pause, and automatic stop at the end
+- Fixed download cancellation from the details page and cleanup of temporary files
+- Show actual total image counts in details instead of treating chapter counts as page counts
+- Added range selection, deselection, and edge scrolling when dragging across library items
+
+To use automatic playback, tap Play at the bottom of the reader and tap the speed or interval to adjust it. For drag selection, enter **Select comics** from the library menu, then swipe horizontally or hold an item and drag; starting from a selected item deselects the range.
 
 ## Development and Building
 
@@ -75,7 +78,7 @@ You can download the official APK from GitHub Releases. On first installation, A
 
 To upgrade directly from an older version, the old and new APKs must use the same application signing key:
 
-- A 1.0 release signed with the same official key can be upgraded directly to 1.1
+- A 1.0 / 1.1 release signed with the same official key can be upgraded directly to 2.0
 - A Debug build or a build signed with a different key cannot replace the official release directly
 - If Android reports a signature conflict, you must uninstall the old version first; uninstalling deletes the library, images, reading history, and progress stored in the app's private directory
 

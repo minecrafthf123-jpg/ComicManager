@@ -66,6 +66,7 @@ fun MainPagerScreen(
                 )
                 JmDownloadScreen(
                     viewModel = jmViewModel,
+                    isActive = pagerState.currentPage == 2,
                     onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                     externalOpenId = jmOpenId,
                     externalOpenToken = jmOpenToken,

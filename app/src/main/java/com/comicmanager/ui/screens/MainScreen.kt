@@ -83,6 +83,8 @@ fun MainScreen(
     val currentSortMode by viewModel.sortMode.collectAsState()
     val selectMode by viewModel.selectMode.collectAsState()
     val selectedIds by viewModel.selectedIds.collectAsState()
+    val orderedComicIds = remember(displayComics) { displayComics.map { it.id } }
+    val gridState = rememberLazyGridState()
     val bulkProgress by viewModel.bulkProgress.collectAsState()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -256,10 +258,26 @@ fun MainScreen(
             val pullRefreshState = rememberPullRefreshState(isRefreshing, { scope.launch { isRefreshing = true; delay(500); isRefreshing = false } })
 
             Column(Modifier.fillMaxSize().padding(paddingValues)) {
+                if (selectMode) {
+                    Text(
+                        stringResource(R.string.shelf_v2_drag_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
                 Box(Modifier.weight(1f).then(if (selectMode) Modifier else Modifier.pullRefresh(pullRefreshState))) {
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
+                        state = gridState,
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)
+                            .shelfDragSelection(
+                                enabled = selectMode,
+                                orderedIds = orderedComicIds,
+                                selectedIds = selectedIds,
+                                gridState = gridState,
+                                onSelectionChange = viewModel::replaceSelection
+                            ),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
