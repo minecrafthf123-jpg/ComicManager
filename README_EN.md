@@ -27,7 +27,7 @@ Comic images, covers, and the database are all stored locally on the device. The
 - Removed the embedded website browser and web downloads; API search, details, and native downloads remain
 - Kept a fixed back button available throughout loading, downloads, errors, and completed downloads
 - Made continuous scrolling the default and added pinch zoom and panning
-- Added automatic scrolling and timed page turns with adjustable speed, pause, and automatic stop at the end
+- Added automatic scrolling at 0.05–1.5 screens/second and page turns every 2–20 seconds, with pause and automatic stop at the end
 - Fixed download cancellation from the details page and cleanup of temporary files
 - Show actual total image counts in details instead of treating chapter counts as page counts
 - Added range selection, deselection, and edge scrolling when dragging across library items

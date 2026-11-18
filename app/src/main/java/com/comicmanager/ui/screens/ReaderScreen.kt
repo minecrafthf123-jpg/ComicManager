@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -51,6 +52,8 @@ import com.comicmanager.ui.viewmodel.ReaderPage
 import com.comicmanager.ui.viewmodel.ReaderUiState
 import com.comicmanager.ui.viewmodel.ReaderViewModel
 import com.comicmanager.util.ReaderZoomGeometry
+import com.comicmanager.util.ReaderPlaybackSpeeds
+import com.comicmanager.util.ReaderScrollAccumulator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
@@ -154,7 +157,7 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
                         }) {
                             Text(
                                 if (state.isPagerMode) stringResource(R.string.reader_v2_page_interval, state.pageIntervalSeconds)
-                                else stringResource(R.string.reader_v2_scroll_speed, scrollSpeedLabel(state.scrollSpeed))
+                                else scrollSpeedDescription(state.scrollSpeed)
                             )
                         }
                     }
@@ -201,6 +204,13 @@ private fun scrollSpeedLabel(speed: Int): String = stringResource(
 )
 
 @Composable
+private fun scrollSpeedDescription(speed: Int): String = stringResource(
+    R.string.reader_v2_scroll_speed,
+    scrollSpeedLabel(speed),
+    ReaderPlaybackSpeeds.screensPerSecond(speed).toString()
+)
+
+@Composable
 private fun PlaybackSettingsDialog(state: ReaderUiState, viewModel: ReaderViewModel, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -216,13 +226,14 @@ private fun PlaybackSettingsDialog(state: ReaderUiState, viewModel: ReaderViewMo
                         steps = 17
                     )
                 } else {
-                    Text(stringResource(R.string.reader_v2_scroll_speed, scrollSpeedLabel(state.scrollSpeed)))
+                    Text(scrollSpeedDescription(state.scrollSpeed))
                     Slider(
                         value = state.scrollSpeed.toFloat(),
                         onValueChange = { viewModel.setScrollSpeed(it.roundToInt()) },
                         valueRange = 1f..5f,
                         steps = 3
                     )
+                    Text(stringResource(R.string.reader_v2_speed_range), style = MaterialTheme.typography.bodySmall)
                 }
                 Text(stringResource(R.string.reader_v2_playback_hint), style = MaterialTheme.typography.bodySmall)
             }
@@ -271,6 +282,7 @@ private fun ScrollReader(state: ReaderUiState, onPageChanged: (Int) -> Unit, onP
     var scale by remember { mutableFloatStateOf(1f) }
     var horizontalOffset by remember { mutableFloatStateOf(0f) }
     var zoomAnchor by remember { mutableStateOf<ScrollZoomAnchor?>(null) }
+    var viewportHeight by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(listState) {
         // Save the top page, including when an unusually tall page fills the screen.
@@ -279,9 +291,10 @@ private fun ScrollReader(state: ReaderUiState, onPageChanged: (Int) -> Unit, onP
     LaunchedEffect(zoomAnchor) {
         zoomAnchor?.let { listState.scrollToItem(it.index, it.offset) }
     }
-    LaunchedEffect(state.isAutoPlaying, state.scrollSpeed, density.density) {
-        if (!state.isAutoPlaying) return@LaunchedEffect
-        val speed = listOf(16f, 24f, 40f, 64f, 96f)[state.scrollSpeed - 1] * density.density
+    LaunchedEffect(state.isAutoPlaying, state.scrollSpeed, viewportHeight) {
+        if (!state.isAutoPlaying || viewportHeight <= 0) return@LaunchedEffect
+        val speed = ReaderPlaybackSpeeds.pixelsPerSecond(state.scrollSpeed, viewportHeight)
+        val accumulator = ReaderScrollAccumulator()
         listState.scroll(MutatePriority.Default) {
             var previousFrame = withFrameNanos { it }
             while (isActive) {
@@ -292,12 +305,15 @@ private fun ScrollReader(state: ReaderUiState, onPageChanged: (Int) -> Unit, onP
                     currentOnPause()
                     break
                 }
-                scrollBy(speed * seconds)
+                val distance = accumulator.frameDistance(speed, seconds)
+                if (distance > 0f) scrollBy(distance)
             }
         }
     }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black).clipToBounds()) {
+    BoxWithConstraints(
+        Modifier.fillMaxSize().onSizeChanged { viewportHeight = it.height }.background(Color.Black).clipToBounds()
+    ) {
         val contentWidth = maxWidth
         val viewportWidth = with(density) { maxWidth.toPx() }
         val maxOffset = viewportWidth * (scale - 1f) / 2f

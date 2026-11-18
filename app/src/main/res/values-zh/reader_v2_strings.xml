@@ -4,7 +4,8 @@
     <string name="reader_v2_pause">暂停</string>
     <string name="reader_v2_settings">自动播放设置</string>
     <string name="reader_v2_page_interval">每 %1$d 秒翻页</string>
-    <string name="reader_v2_scroll_speed">滚动速度：%1$s</string>
+    <string name="reader_v2_scroll_speed">%1$s · %2$s屏/秒</string>
+    <string name="reader_v2_speed_range">可调整为每秒滚动0.05至1.5屏。</string>
     <string name="reader_v2_speed_slowest">很慢</string>
     <string name="reader_v2_speed_slow">较慢</string>
     <string name="reader_v2_speed_normal">适中</string>

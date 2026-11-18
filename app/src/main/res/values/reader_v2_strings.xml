@@ -4,7 +4,8 @@
     <string name="reader_v2_pause">Pause</string>
     <string name="reader_v2_settings">Auto play settings</string>
     <string name="reader_v2_page_interval">%1$d s / page</string>
-    <string name="reader_v2_scroll_speed">Scroll speed: %1$s</string>
+    <string name="reader_v2_scroll_speed">%1$s · %2$s screens/s</string>
+    <string name="reader_v2_speed_range">Adjust from 0.05 to 1.5 screens per second.</string>
     <string name="reader_v2_speed_slowest">Very slow</string>
     <string name="reader_v2_speed_slow">Slow</string>
     <string name="reader_v2_speed_normal">Normal</string>
