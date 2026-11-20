@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_batch_v21_completed_summary">已处理 %1$d 本：成功 %2$d 本，失败 %3$d 本</string>
+    <string name="jm_batch_v21_cancelled_summary">批量下载已取消：成功 %1$d 本，失败 %2$d 本，未下载 %3$d 本</string>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_batch_v21_completed_summary">Batch of %1$d comics finished: %2$d succeeded, %3$d failed</string>
+    <string name="jm_batch_v21_cancelled_summary">Batch cancelled: %1$d succeeded, %2$d failed, %3$d not downloaded</string>
+</resources>

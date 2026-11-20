@@ -5,6 +5,7 @@ import com.comicmanager.R
 import com.comicmanager.data.ComicRepository
 import com.comicmanager.model.Comic
 import com.comicmanager.util.JmClientFactory
+import com.comicmanager.util.JmIdParser
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmComment
 import io.github.jukomu.jmcomic.api.model.SearchQuery
@@ -57,7 +58,11 @@ class JmNativeDownloader(private val repository: ComicRepository) {
         }
     }
 
-    suspend fun downloadAlbum(context: Context, albumId: String): JmNativeDownloadResult = downloadMutex.withLock {
+    suspend fun downloadAlbum(
+        context: Context,
+        albumId: String,
+        isCancellationRequested: () -> Boolean = { false }
+    ): JmNativeDownloadResult = downloadMutex.withLock {
         withContext(Dispatchers.IO) {
             require(albumId.matches(Regex("\\d+"))) { context.getString(R.string.jm_v2_invalid_id) }
             val downloadJob = currentCoroutineContext()[Job]
@@ -71,12 +76,16 @@ class JmNativeDownloader(private val repository: ComicRepository) {
             var cover: File? = null
             var committed = false
             try {
+                // Cancellation can arrive while waiting for another downloader's mutex, before
+                // this request has an active job to interrupt. Check the batch token after entry.
+                if (isCancellationRequested()) throw CancellationException("Download cancelled")
                 val comics = repository.allComics.first()
                 reclaimJmDownloadArtifacts(
                     context.filesDir,
                     comics.flatMap { listOf(it.directoryPath, it.coverPath) }
                 )
-                comics.firstOrNull { it.jmId == albumId }?.let {
+                val normalizedId = JmIdParser.normalize(albumId)
+                comics.firstOrNull { normalizedId != null && JmIdParser.normalize(it.jmId) == normalizedId }?.let {
                     return@withContext JmNativeDownloadResult(it.name, it.pageCount)
                 }
                 _state.value = JmNativeState(phase = context.getString(R.string.native_fetching_info))
@@ -140,14 +149,15 @@ class JmNativeDownloader(private val repository: ComicRepository) {
                     phase = context.getString(R.string.native_importing_library),
                     current = images.size, total = images.size, canCancel = false
                 )
-                withContext(NonCancellable) {
-                    repository.insertComic(Comic(
+                val savedComic = withContext(NonCancellable) {
+                    val result = repository.importDownloadedComic(Comic(
                         name = comicName, coverPath = coverFile.absolutePath, directoryPath = finalDir.absolutePath,
                         pageCount = images.size, jmId = albumId
                     ))
-                    committed = true
+                    committed = result.directoryPath == finalDir.absolutePath
+                    result
                 }
-                JmNativeDownloadResult(comicName, images.size)
+                JmNativeDownloadResult(savedComic.name, savedComic.pageCount)
             } finally {
                 // Child coroutines are finished before cleanup, so late network callbacks cannot write files.
                 staging.deleteRecursively()

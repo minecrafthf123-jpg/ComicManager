@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_v21_multi_select">多选</string>
+    <string name="jm_v21_loaded_results">已加载 %1$d / %2$d 个结果</string>
+    <string name="jm_v21_selected_count">已选 %1$d 本</string>
+    <string name="jm_v21_select_loaded">全选已加载</string>
+    <string name="jm_v21_clear_selection">取消全选</string>
+    <string name="jm_v21_download_selected">下载所选（%1$d 本）</string>
+    <string name="jm_v21_queue_busy">下载队列进行中</string>
+    <string name="jm_v21_selection_scope">全选仅包含已加载结果。可继续加载更多，再次全选以包含新增结果。</string>
+    <string name="jm_v21_batch_position">正在下载第 %1$d / %2$d 本</string>
+    <string name="jm_v21_batch_counts">已完成 %1$d 本 · 成功 %2$d 本 · 失败 %3$d 本</string>
+    <string name="jm_v21_cancel_batch">取消全部</string>
+    <string name="jm_v21_retry_failed">重试失败项</string>
+    <string name="jm_v21_page_progress">图片 %1$d / %2$d 页</string>
+    <string name="jm_v21_failed_titles">失败漫画：%1$s</string>
+</resources>

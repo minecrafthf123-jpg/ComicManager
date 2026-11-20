@@ -316,7 +316,7 @@ private fun ScrollReader(state: ReaderUiState, onPageChanged: (Int) -> Unit, onP
     ) {
         val contentWidth = maxWidth
         val viewportWidth = with(density) { maxWidth.toPx() }
-        val maxOffset = viewportWidth * (scale - 1f) / 2f
+        val maxOffset = ReaderZoomGeometry.horizontalPanLimit(viewportWidth, scale)
         // A size/orientation change may reduce the allowable horizontal range.
         val displayedOffset = horizontalOffset.coerceIn(-maxOffset, maxOffset)
         Box(
@@ -337,8 +337,8 @@ private fun ScrollReader(state: ReaderUiState, onPageChanged: (Int) -> Unit, onP
                         )
                         scale = result.scale
                     } else {
-                        // While zoomed, both axes follow the same finger. At 1x,
-                        // one-finger movement is left to LazyColumn for flinging.
+                        // While enlarged, both axes follow the same finger. At
+                        // fit width or smaller, LazyColumn handles normal flings.
                         listState.dispatchRawDelta(-pan.y)
                     }
                 }
@@ -347,24 +347,28 @@ private fun ScrollReader(state: ReaderUiState, onPageChanged: (Int) -> Unit, onP
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxHeight().requiredWidth(contentWidth * scale)
-                    .offset { IntOffset(displayedOffset.roundToInt(), 0) }
+                // Keep the full viewport touchable below 1x, including its black
+                // margins. Only each centered page becomes narrower in that case.
+                modifier = Modifier.fillMaxHeight().requiredWidth(contentWidth * maxOf(1f, scale))
+                    .offset { IntOffset(displayedOffset.roundToInt(), 0) },
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 items(state.pages, key = { it.path }) { page ->
-                    ComicPageImage(page, Modifier.fillMaxWidth().aspectRatio(page.aspectRatio))
+                    ComicPageImage(page, Modifier.width(contentWidth * scale).aspectRatio(page.aspectRatio))
                 }
             }
         }
-        if (scale > 1.001f) {
+        if (scale != 1f) {
             FilledTonalButton(
                 onClick = {
                     onPause()
+                    val reset = ReaderZoomGeometry.reset(scale, listState.firstVisibleItemScrollOffset.toFloat())
                     zoomAnchor = ScrollZoomAnchor(
                         listState.firstVisibleItemIndex,
-                        (listState.firstVisibleItemScrollOffset / scale).roundToInt()
+                        reset.scrollOffset.roundToInt()
                     )
-                    scale = 1f
-                    horizontalOffset = 0f
+                    scale = reset.scale
+                    horizontalOffset = reset.horizontalOffset
                 },
                 modifier = Modifier.align(Alignment.TopEnd).padding(8.dp)
             ) {
@@ -389,7 +393,7 @@ private fun Modifier.pauseOnReaderTouch(onTouch: () -> Unit): Modifier {
     }
 }
 
-/** Two fingers zoom; at 1x a single finger remains a normal lazy-list gesture. */
+/** Two fingers zoom; at 1x or smaller, a single finger uses normal lazy-list scrolling. */
 @Composable
 private fun Modifier.scrollReaderGestures(
     zoomed: Boolean,

@@ -23,7 +23,8 @@ fun JmDownloadScreen(
     isActive: Boolean = true,
     externalOpenId: String? = null,
     externalOpenToken: Int = 0,
-    onExternalConsumed: () -> Unit = {}
+    onExternalConsumed: () -> Unit = {},
+    onSwipeToHistoryEnabledChange: (Boolean) -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
@@ -35,6 +36,28 @@ fun JmDownloadScreen(
             if (state.isDownloading || state.statusMessage.isNotBlank()) {
                 Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
                     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        if (state.isDownloading && state.isBatch) {
+                            Text(
+                                stringResource(R.string.jm_v21_batch_position, state.batchCurrent, state.batchTotal),
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                stringResource(R.string.jm_v21_batch_counts, state.batchCompleted, state.batchSucceeded, state.batchFailed),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            LinearProgressIndicator(
+                                progress = {
+                                    if (state.batchTotal > 0) (state.batchCompleted.toFloat() / state.batchTotal).coerceIn(0f, 1f)
+                                    else 0f
+                                },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                            )
+                            Text(
+                                state.currentAlbumTitle.ifBlank { "JM${state.currentAlbumId}" },
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = if (state.isDownloading) {
@@ -47,11 +70,13 @@ fun JmDownloadScreen(
                             )
                             if (state.isDownloading) {
                                 TextButton(onClick = viewModel::cancelNativeDownload, enabled = state.canCancel) {
-                                    Text(stringResource(R.string.action_cancel))
+                                    Text(stringResource(if (state.isBatch) R.string.jm_v21_cancel_batch else R.string.action_cancel))
                                 }
                             } else {
-                                if (state.canRetry) TextButton(onClick = viewModel::retryDownload) {
-                                    Text(stringResource(R.string.action_retry))
+                                if (state.canRetry) {
+                                    TextButton(onClick = viewModel::retryDownload) {
+                                        Text(stringResource(if (state.isBatch) R.string.jm_v21_retry_failed else R.string.action_retry))
+                                    }
                                 }
                                 IconButton(onClick = viewModel::resetState) {
                                     Icon(Icons.Default.Close, stringResource(R.string.action_close))
@@ -64,9 +89,23 @@ fun JmDownloadScreen(
                                     progress = { (state.nativeCurrent.toFloat() / state.nativeTotal).coerceIn(0f, 1f) },
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                Text("${state.nativeCurrent} / ${state.nativeTotal}", style = MaterialTheme.typography.bodySmall)
+                                Text(
+                                    stringResource(R.string.jm_v21_page_progress, state.nativeCurrent, state.nativeTotal),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
                             } else LinearProgressIndicator(Modifier.fillMaxWidth())
-                            if (state.nativeMsg.isNotBlank()) Text(state.nativeMsg, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                            if (state.nativeMsg.isNotBlank()) {
+                                Text(state.nativeMsg, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                        } else if (state.failedAlbums.isNotEmpty()) {
+                            Text(
+                                stringResource(
+                                    R.string.jm_v21_failed_titles,
+                                    state.failedAlbums.joinToString(context.getString(R.string.list_separator)) { it.name.ifBlank { "JM${it.id}" } }
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
@@ -83,10 +122,12 @@ fun JmDownloadScreen(
                 onGetComments = viewModel::getJmComments,
                 onEnrichTitles = viewModel::enrichJmTitles,
                 onDownload = viewModel::startNativeDownload,
+                onBatchDownload = viewModel::startBatchDownload,
                 isBusy = state.isDownloading,
                 externalOpenId = externalOpenId,
                 externalOpenToken = externalOpenToken,
-                onExternalConsumed = onExternalConsumed
+                onExternalConsumed = onExternalConsumed,
+                onSwipeToHistoryEnabledChange = onSwipeToHistoryEnabledChange
             )
         }
     }

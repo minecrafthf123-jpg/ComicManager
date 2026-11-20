@@ -28,6 +28,7 @@ import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +51,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.comicmanager.model.Comic
 import com.comicmanager.ui.viewmodel.MainViewModel
+import com.comicmanager.ui.viewmodel.ImportPhase
+import com.comicmanager.ui.viewmodel.ImportState
 import com.comicmanager.ui.viewmodel.SortMode
 import java.io.File
 
@@ -86,6 +89,7 @@ fun MainScreen(
     val orderedComicIds = remember(displayComics) { displayComics.map { it.id } }
     val gridState = rememberLazyGridState()
     val bulkProgress by viewModel.bulkProgress.collectAsState()
+    val shareState by viewModel.shareState.collectAsState()
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
@@ -96,6 +100,32 @@ fun MainScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    var launchedShareId by rememberSaveable { mutableLongStateOf(0L) }
+    val shareLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        viewModel.onShareChooserReturned(context, launchedShareId)
+    }
+
+    LaunchedEffect(shareState.requestId, shareState.pendingIntent) {
+        shareState.pendingIntent?.let { intent ->
+            val requestId = shareState.requestId
+            try {
+                launchedShareId = requestId
+                shareLauncher.launch(intent)
+                viewModel.onShareLaunched(requestId)
+            } catch (error: Exception) {
+                viewModel.onShareLaunchFailed(context, requestId, error)
+            }
+        }
+    }
+
+    LaunchedEffect(shareState.requestId, shareState.message) {
+        shareState.message?.let { message ->
+            val requestId = shareState.requestId
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Long)
+            viewModel.clearShareMessage(requestId, message)
+        }
+    }
 
     val duplicateJmIds = remember(allComics) {
         allComics
@@ -115,10 +145,15 @@ fun MainScreen(
 
     LaunchedEffect(selectMode) { onSelectModeChange(selectMode) }
 
-    LaunchedEffect(importState.importMessage) {
+    LaunchedEffect(importState.batchId, importState.importMessage) {
         importState.importMessage?.let { message ->
-            snackbarHostState.showSnackbar(message = message)
-            viewModel.clearImportMessage()
+            val batchId = importState.batchId
+            snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = context.getString(R.string.action_close),
+                duration = SnackbarDuration.Indefinite
+            )
+            viewModel.clearImportMessage(batchId)
         }
     }
 
@@ -191,10 +226,12 @@ fun MainScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.batch_import_id_archives)) },
+                                enabled = !importState.isImporting && !bulkProgress.isRunning,
                                 onClick = { showSortMenu = false; zipPickerLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) }
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.delete_duplicate_comics), color = MaterialTheme.colorScheme.error) },
+                                enabled = !importState.isImporting && !bulkProgress.isRunning,
                                 onClick = {
                                     showSortMenu = false
                                     val count = viewModel.deleteDuplicates()
@@ -207,6 +244,7 @@ fun MainScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.export_all)) },
+                                enabled = !importState.isImporting && !bulkProgress.isRunning,
                                 onClick = {
                                     showSortMenu = false
                                     viewModel.exportAll(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
@@ -214,6 +252,7 @@ fun MainScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.batch_rename_from_zip)) },
+                                enabled = !importState.isImporting && !bulkProgress.isRunning,
                                 onClick = {
                                     showSortMenu = false
                                     viewModel.renameNumericComics(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
@@ -238,11 +277,7 @@ fun MainScreen(
     ) { paddingValues ->
         if (importState.isImporting) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.height(16.dp))
-                    Text(stringResource(R.string.importing_comics))
-                }
+                ImportProgressContent(importState)
             }
         } else if (displayComics.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
@@ -314,9 +349,9 @@ fun MainScreen(
                                 modifier = Modifier.weight(1f),
                                 textAlign = TextAlign.Center
                             )
-                            TextButton(onClick = { viewModel.exportSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } }) { Text(stringResource(R.string.action_export)) }
-                            TextButton(onClick = { viewModel.shareSelected(context) }) { Text(stringResource(R.string.action_share)) }
-                            TextButton(onClick = {
+                            TextButton(enabled = !bulkProgress.isRunning, onClick = { viewModel.exportSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } }) { Text(stringResource(R.string.action_export)) }
+                            TextButton(enabled = !bulkProgress.isRunning, onClick = { viewModel.shareSelected(context) }) { Text(stringResource(R.string.action_share)) }
+                            TextButton(enabled = !bulkProgress.isRunning, onClick = {
                                 viewModel.deleteSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
                             }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
                         }
@@ -337,6 +372,19 @@ fun MainScreen(
                         LinearProgressIndicator(progress = { bulkProgress.current.toFloat() / bulkProgress.total.toFloat() }, modifier = Modifier.fillMaxWidth())
                         Spacer(Modifier.height(8.dp))
                         Text("${bulkProgress.current} / ${bulkProgress.total}", style = MaterialTheme.typography.bodySmall)
+                        if (shareState.isPreparing) {
+                            if (bulkProgress.total > 1) {
+                                Text(
+                                    stringResource(R.string.shelf_share_v21_bundle_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                            TextButton(onClick = viewModel::cancelSharePreparation) {
+                                Text(stringResource(R.string.action_cancel))
+                            }
+                        }
                     }
                 }
             }
@@ -564,6 +612,59 @@ fun MainScreen(
                     }
                 }
             }
+        )
+    }
+}
+
+@Composable
+private fun ImportProgressContent(state: ImportState) {
+    Column(
+        modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(stringResource(R.string.importing_comics), style = MaterialTheme.typography.titleLarge)
+        Text(
+            stringResource(R.string.shelf_v21_import_processed, state.completed, state.total),
+            style = MaterialTheme.typography.titleMedium
+        )
+        LinearProgressIndicator(
+            progress = { if (state.total > 0) state.completed.toFloat() / state.total else 0f },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            stringResource(R.string.shelf_v21_import_current, (state.completed + 1).coerceAtMost(state.total), state.total),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        if (state.currentName.isNotBlank()) {
+            Text(state.currentName, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        Text(
+            stringResource(when (state.phase) {
+                ImportPhase.CHECKING -> R.string.shelf_v21_import_checking
+                ImportPhase.EXTRACTING -> R.string.shelf_v21_import_extracting
+                ImportPhase.SAVING -> R.string.shelf_v21_import_saving
+                else -> R.string.shelf_v21_import_preparing
+            }),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (state.phase == ImportPhase.EXTRACTING || state.phase == ImportPhase.SAVING) {
+            Text(
+                stringResource(R.string.shelf_v21_import_extracted, state.extractedImages, state.extractedBytes / 1_048_576.0),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Text(
+            stringResource(R.string.shelf_v21_import_counts, state.successCount, state.repairedCount, state.skippedCount, state.failedCount),
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            stringResource(R.string.shelf_v21_import_background_hint),
+            style = MaterialTheme.typography.bodySmall,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

@@ -4,7 +4,7 @@
 
 An Android comic manager with **JMComic API search, details, and downloads to a local library**, ZIP imports, library organization, zoomable reading, automatic playback, and reading progress.
 
-Current version: **2.0** (`versionCode 4`)
+Current version: **2.1** (`versionCode 5`)
 
 System requirement: **Android 7.0 (API 24) or later**
 
@@ -21,6 +21,15 @@ System requirement: **Android 7.0 (API 24) or later**
 - Manually bind or edit associated IDs and open the corresponding details from the library
 
 Comic images, covers, and the database are all stored locally on the device. The project does not automatically upload personal library data.
+
+## Highlights in v2.1
+
+- The library remembers its sort order and shows the current progress of batch ZIP imports
+- Press Enter to search JM, then select individual comics or all loaded results for batch download
+- Swipe left on the JM search page to return to reading history
+- Share selected comics as ZIP files through Android's share sheet, with one bundle for multiple comics
+- Pinch to zoom from 50% to 400% in continuous reading mode
+- New chibi character launcher icon on a blue background
 
 ## Highlights in v2.0
 
@@ -78,7 +87,7 @@ You can download the official APK from GitHub Releases. On first installation, A
 
 To upgrade directly from an older version, the old and new APKs must use the same application signing key:
 
-- A 1.0 / 1.1 release signed with the same official key can be upgraded directly to 2.0
+- Older releases signed with the same official key can upgrade directly to 2.1
 - A Debug build or a build signed with a different key cannot replace the official release directly
 - If Android reports a signature conflict, you must uninstall the old version first; uninstalling deletes the library, images, reading history, and progress stored in the app's private directory
 

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_share_v21_preparing">Preparing share</string>
+    <string name="shelf_share_v21_busy">Please wait for the current file operation to finish</string>
+    <string name="shelf_share_v21_missing_selection">Some selected comics are no longer in the library. Please select them again.</string>
+    <string name="shelf_share_v21_bundle_filename">ComicManager_%1$d_comics.zip</string>
+    <string name="shelf_share_v21_cancelled">Share preparation cancelled. Your comics are unchanged.</string>
+    <string name="shelf_share_v21_failed">Unable to prepare files for sharing: %1$s</string>
+    <string name="shelf_share_v21_launch_failed">Unable to open the share panel: %1$s</string>
+    <string name="shelf_share_v21_returned">Back in the library. Check the receiving app to confirm whether the file was sent.</string>
+    <string name="shelf_share_v21_bundle_hint">Multiple comics are shared as one ZIP containing a separate ZIP for each comic.</string>
+</resources>

@@ -1,6 +1,7 @@
 package com.comicmanager.ui.viewmodel
 
 import android.content.Context
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Environment
@@ -11,25 +12,63 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.comicmanager.R
 import com.comicmanager.data.ComicRepository
+import com.comicmanager.data.LocalImportResult
 import com.comicmanager.model.Comic
 import com.comicmanager.util.JmIdParser
 import com.comicmanager.util.ZipUtils
+import com.comicmanager.util.ComicArchiveSource
+import com.comicmanager.util.prepareComicShareArchive
+import com.comicmanager.util.writeComicArchive
+import com.comicmanager.util.reclaimExpiredComicShareSessions
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+
+enum class ImportPhase { IDLE, PREPARING, CHECKING, EXTRACTING, SAVING, COMPLETED, CANCELLED }
 
 data class ImportState(
+    val batchId: Long = 0,
     val isImporting: Boolean = false,
+    val phase: ImportPhase = ImportPhase.IDLE,
+    val completed: Int = 0,
+    val total: Int = 0,
+    val currentName: String = "",
+    val extractedImages: Int = 0,
+    val extractedBytes: Long = 0,
+    val successCount: Int = 0,
+    val repairedCount: Int = 0,
+    val skippedCount: Int = 0,
+    val failedCount: Int = 0,
     val importMessage: String? = null
-)
+) {
+    fun acknowledgeMessage(batchId: Long): ImportState =
+        if (this.batchId == batchId && !isImporting) copy(importMessage = null) else this
+}
 
 data class BulkProgress(
     val isRunning: Boolean = false,
     @StringRes val labelRes: Int? = null,
     val current: Int = 0,
     val total: Int = 0
+)
+
+data class ComicShareState(
+    val requestId: Long = 0,
+    val isPreparing: Boolean = false,
+    val pendingIntent: Intent? = null,
+    val message: String? = null
 )
 
 enum class SortMode(@StringRes val labelRes: Int) {
@@ -39,7 +78,10 @@ enum class SortMode(@StringRes val labelRes: Int) {
     NAME_NUM_ASC(R.string.sort_number_asc)
 }
 
-class MainViewModel(private val repository: ComicRepository) : ViewModel() {
+class MainViewModel(
+    private val repository: ComicRepository,
+    private val sortPreferences: ShelfSortPreferences
+) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -47,7 +89,8 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
     private val _isSearchActive = MutableStateFlow(false)
     val isSearchActive: StateFlow<Boolean> = _isSearchActive.asStateFlow()
 
-    private val _sortMode = MutableStateFlow(SortMode.TIME_DESC)
+    // Restore before exposing the shelf flow, so the first order is already correct.
+    private val _sortMode = MutableStateFlow(sortPreferences.read())
     val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
 
     private val _selectMode = MutableStateFlow(false)
@@ -77,9 +120,16 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
 
     private val _importState = MutableStateFlow(ImportState())
     val importState: StateFlow<ImportState> = _importState.asStateFlow()
+    private val importInFlight = AtomicBoolean(false)
+    private val importBatchSequence = AtomicLong(0)
 
     private val _bulkProgress = MutableStateFlow(BulkProgress())
     val bulkProgress: StateFlow<BulkProgress> = _bulkProgress.asStateFlow()
+    private val _shareState = MutableStateFlow(ComicShareState())
+    val shareState: StateFlow<ComicShareState> = _shareState.asStateFlow()
+    private val shareSequence = AtomicLong(0)
+    private val shareLock = Any()
+    private var shareJob: Job? = null
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
@@ -93,84 +143,162 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
     }
 
     fun setSortMode(mode: SortMode) {
+        sortPreferences.write(mode)
         _sortMode.value = mode
     }
 
     fun importComics(context: Context, uris: List<Uri>) {
-        if (uris.isEmpty()) return
+        if (uris.isEmpty() || !importInFlight.compareAndSet(false, true)) return
+        val batchId = importBatchSequence.incrementAndGet()
+        val batchUris = uris.toList()
+        val importContext = context.applicationContext.createConfigurationContext(context.resources.configuration)
+        _importState.value = ImportState(
+            batchId = batchId,
+            isImporting = true,
+            phase = ImportPhase.PREPARING,
+            total = batchUris.size
+        )
         viewModelScope.launch(Dispatchers.IO) {
-            _importState.value = ImportState(isImporting = true)
             var successCount = 0
             var repairedCount = 0
             var skippedCount = 0
             var failCount = 0
             val batchJmIds = mutableSetOf<String>()
-
-            for (uri in uris) {
-                try {
-                    val zipName = ZipUtils.getZipName(context, uri)
-                    val fileJmId = JmIdParser.extract(zipName)
-                    if (fileJmId != null && !batchJmIds.add(fileJmId)) {
-                        skippedCount++
-                        continue
-                    }
-
-                    val existingComics = repository.allComics.first()
-                    val sameName = existingComics.firstOrNull { it.name == zipName }
-                    val claimedBy = fileJmId?.let { id ->
-                        existingComics.firstOrNull { JmIdParser.normalize(it.jmId) == id }
-                    }
-
-                    if (sameName != null) {
-                        if (
-                            fileJmId != null &&
-                            sameName.jmId.isBlank() &&
-                            claimedBy == null
-                        ) {
-                            repository.updateJmId(sameName.id, fileJmId)
-                            repairedCount++
-                        } else {
-                            skippedCount++
-                        }
-                        continue
-                    }
-
-                    if (claimedBy != null) {
-                        skippedCount++
-                        continue
-                    }
-
-                    val result = ZipUtils.extractZip(context, uri)
-                    if (result.success && result.imageFiles.isNotEmpty()) {
-                        val coverFile = saveCoverImage(context, result.imageFiles.first(), zipName)
-                        val comic = Comic(
-                            name = zipName,
-                            coverPath = coverFile.absolutePath,
-                            directoryPath = result.imageFiles.first().parentFile!!.absolutePath,
-                            pageCount = result.imageFiles.size,
-                            jmId = fileJmId ?: ""
+            val coroutineContext = currentCoroutineContext()
+            try {
+                ZipUtils.withImportSession {
+                    try {
+                        val referencedComics = repository.allComics.first()
+                        ZipUtils.reclaimStaleImports(
+                            importContext.filesDir,
+                            referencedComics.flatMap { listOf(it.directoryPath, it.coverPath) }
                         )
-                        repository.insertComic(comic)
-                        successCount++
-                    } else {
-                        failCount++
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        // If references cannot be read, preserve all files and let
+                        // individual imports report any database failure normally.
                     }
-                } catch (e: Exception) {
-                    failCount++
-                }
-            }
+                    for ((index, uri) in batchUris.withIndex()) {
+                        coroutineContext.ensureActive()
+                        _importState.update {
+                            it.copy(phase = ImportPhase.CHECKING, currentName = "", extractedImages = 0, extractedBytes = 0)
+                        }
+                        var uncommittedDirectory: File? = null
+                        var uncommittedCover: File? = null
+                        try {
+                            val zipName = ZipUtils.getZipName(importContext, uri)
+                            _importState.update { it.copy(currentName = zipName) }
+                            val fileJmId = JmIdParser.extract(zipName)
+                            if (fileJmId != null && fileJmId in batchJmIds) {
+                                skippedCount++
+                                continue
+                            }
+                            val existing = repository.checkLocalImport(zipName, fileJmId)
+                            if (existing != null) {
+                                if (existing == LocalImportResult.LINKED) repairedCount++ else skippedCount++
+                                fileJmId?.let(batchJmIds::add)
+                                continue
+                            }
 
-            _importState.value = ImportState(
-                isImporting = false,
-                importMessage = buildList {
-                    if (successCount > 0) add(context.getString(R.string.import_summary_imported, successCount))
-                    if (repairedCount > 0) add(context.getString(R.string.import_summary_repaired_ids, repairedCount))
-                    if (skippedCount > 0) add(context.getString(R.string.import_summary_skipped, skippedCount))
-                    if (failCount > 0) add(context.getString(R.string.import_summary_failed, failCount))
-                }.joinToString(context.getString(R.string.list_separator))
-                    .ifBlank { context.getString(R.string.no_importable_comics) }
-            )
+                            _importState.update { it.copy(phase = ImportPhase.EXTRACTING) }
+                            val result = ZipUtils.extractZip(
+                                importContext,
+                                uri,
+                                onProgress = { progress ->
+                                    _importState.update {
+                                        it.copy(extractedImages = progress.imageCount, extractedBytes = progress.bytes)
+                                    }
+                                },
+                                checkCancelled = { coroutineContext.ensureActive() }
+                            )
+                            if (!result.success || result.imageFiles.isEmpty()) {
+                                failCount++
+                                continue
+                            }
+                            uncommittedDirectory = result.imageFiles.first().parentFile
+                            coroutineContext.ensureActive()
+                            _importState.update { it.copy(phase = ImportPhase.SAVING) }
+                            val coverFile = saveCoverImage(importContext, result.imageFiles.first())
+                            uncommittedCover = coverFile
+                            val comic = Comic(
+                                name = zipName,
+                                coverPath = coverFile.absolutePath,
+                                directoryPath = result.imageFiles.first().parentFile!!.absolutePath,
+                                pageCount = result.imageFiles.size,
+                                jmId = fileJmId ?: ""
+                            )
+                            coroutineContext.ensureActive()
+                            // Finish the short Room ownership transfer before cancellation can
+                            // clean up the extracted files referenced by the inserted row.
+                            withContext(NonCancellable) {
+                                when (repository.importLocalComic(comic)) {
+                                    LocalImportResult.IMPORTED -> {
+                                        uncommittedDirectory = null
+                                        uncommittedCover = null
+                                        successCount++
+                                    }
+                                    LocalImportResult.LINKED -> repairedCount++
+                                    LocalImportResult.EXISTING -> skippedCount++
+                                }
+                            }
+                            fileJmId?.let(batchJmIds::add)
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            failCount++
+                        } finally {
+                            uncommittedDirectory?.deleteRecursively()
+                            uncommittedCover?.delete()
+                            if (coroutineContext.isActive) {
+                                _importState.update {
+                                    it.copy(
+                                        completed = index + 1,
+                                        successCount = successCount,
+                                        repairedCount = repairedCount,
+                                        skippedCount = skippedCount,
+                                        failedCount = failCount
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    _importState.update {
+                        it.copy(
+                            isImporting = false,
+                            phase = ImportPhase.COMPLETED,
+                            currentName = "",
+                            importMessage = importSummary(importContext, batchUris.size, successCount, repairedCount, skippedCount, failCount)
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                _importState.update {
+                    it.copy(isImporting = false, phase = ImportPhase.CANCELLED,
+                        importMessage = importContext.getString(R.string.shelf_v21_import_stopped, it.completed, it.total))
+                }
+                throw cancelled
+            } finally {
+                importInFlight.set(false)
+            }
         }
+    }
+
+    private fun importSummary(context: Context, total: Int, imported: Int, repaired: Int, skipped: Int, failed: Int): String {
+        val title = context.getString(
+            when {
+                failed == total -> R.string.shelf_v21_import_failed
+                failed > 0 -> R.string.shelf_v21_import_finished_with_errors
+                else -> R.string.shelf_v21_import_finished
+            }
+        )
+        val counts = buildList {
+            if (imported > 0) add(context.getString(R.string.import_summary_imported, imported))
+            if (repaired > 0) add(context.getString(R.string.import_summary_repaired_ids, repaired))
+            if (skipped > 0) add(context.getString(R.string.import_summary_skipped, skipped))
+            if (failed > 0) add(context.getString(R.string.import_summary_failed, failed))
+        }.joinToString(context.getString(R.string.list_separator))
+        return "$title ($total / $total)\n$counts"
     }
 
     fun deleteComic(comic: Comic) {
@@ -361,48 +489,101 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
     }
 
     fun shareSelected(context: Context) {
-        val ids = _selectedIds.value
+        val ids = _selectedIds.value.toSet()
         if (ids.isEmpty()) return
-        viewModelScope.launch(Dispatchers.IO) {
-            val selected = displayComics.value.filter { it.id in ids }
-            val shareDir = File(context.cacheDir, "share")
-            shareDir.deleteRecursively()
-            shareDir.mkdirs()
-            val uris = mutableListOf<Uri>()
-            for (comic in selected) {
-                try {
-                    val zipFile = File(shareDir, exportZipName(comic))
-                    createComicZip(comic, zipFile)
-                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", zipFile)
-                    uris.add(uri)
-                } catch (_: Exception) {}
+        if (_bulkProgress.value.isRunning || _shareState.value.pendingIntent != null) {
+            _shareState.update { it.copy(message = context.getString(R.string.shelf_share_v21_busy)) }
+            return
+        }
+        val shareContext = context.applicationContext.createConfigurationContext(context.resources.configuration)
+        val requestId = shareSequence.incrementAndGet()
+        _shareState.value = ComicShareState(requestId = requestId, isPreparing = true)
+        _bulkProgress.value = BulkProgress(isRunning = true, labelRes = R.string.shelf_share_v21_preparing, total = ids.size)
+        shareJob = viewModelScope.launch(Dispatchers.IO) {
+            val sessionDirectory = File(shareContext.cacheDir, "share/${UUID.randomUUID()}")
+            var published = false
+            try {
+                reclaimExpiredComicShareSessions(shareContext.cacheDir)
+                val jobContext = currentCoroutineContext()
+                val selected = repository.allComics.first().filter { it.id in ids }
+                check(selected.size == ids.size) { shareContext.getString(R.string.shelf_share_v21_missing_selection) }
+                val file = prepareComicShareArchive(
+                    sources = selected.map { ComicArchiveSource(exportZipName(it), File(it.directoryPath)) },
+                    sessionDirectory = sessionDirectory,
+                    bundleName = shareContext.getString(R.string.shelf_share_v21_bundle_filename, selected.size),
+                    checkCancelled = { jobContext.ensureActive() },
+                    onComicPacked = { count -> _bulkProgress.update {
+                        if (it.labelRes == R.string.shelf_share_v21_preparing) it.copy(current = count) else it
+                    } }
+                )
+                val uri = FileProvider.getUriForFile(shareContext, "${shareContext.packageName}.fileprovider", file)
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_TITLE, file.name)
+                    clipData = ClipData.newRawUri(file.name, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(send, shareContext.getString(R.string.share_comics)).apply {
+                    clipData = send.clipData
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                synchronized(shareLock) {
+                    jobContext.ensureActive()
+                    _shareState.value = ComicShareState(requestId = requestId, pendingIntent = chooser)
+                    published = true
+                }
+            } catch (_: CancellationException) {
+                _shareState.update { if (it.requestId == requestId) it.copy(
+                    isPreparing = false, message = shareContext.getString(R.string.shelf_share_v21_cancelled)
+                ) else it }
+            } catch (error: Exception) {
+                _shareState.update { if (it.requestId == requestId) it.copy(
+                    isPreparing = false,
+                    message = shareContext.getString(R.string.shelf_share_v21_failed, error.message.orEmpty())
+                ) else it }
+            } finally {
+                // Never remove an earlier session: recipient apps may still be reading its URI.
+                if (!published) sessionDirectory.deleteRecursively()
+                _shareState.update { if (it.requestId == requestId) it.copy(isPreparing = false) else it }
+                if (_shareState.value.requestId == requestId && _bulkProgress.value.labelRes == R.string.shelf_share_v21_preparing) {
+                    _bulkProgress.value = BulkProgress()
+                }
             }
-            _selectMode.value = false
-            _selectedIds.value = emptySet()
-            if (uris.isEmpty()) return@launch
-            val intent = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
-                type = "application/zip"
-                putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            context.startActivity(Intent.createChooser(intent, context.getString(R.string.share_comics)))
         }
     }
 
+    fun cancelSharePreparation() = synchronized(shareLock) {
+        if (_shareState.value.isPreparing) shareJob?.cancel()
+    }
+
+    fun onShareLaunched(requestId: Long) {
+        _shareState.update { if (it.requestId == requestId) it.copy(pendingIntent = null) else it }
+        _selectMode.value = false
+        _selectedIds.value = emptySet()
+    }
+
+    fun onShareLaunchFailed(context: Context, requestId: Long, error: Exception) {
+        _shareState.update { if (it.requestId == requestId) it.copy(
+            pendingIntent = null,
+            message = context.getString(R.string.shelf_share_v21_launch_failed, error.message.orEmpty())
+        ) else it }
+    }
+
+    fun onShareChooserReturned(context: Context, requestId: Long) {
+        // ACTION_SEND has no delivery result. RESULT_CANCELED is also returned by apps
+        // which sent the file successfully, so do not misreport cancellation or success.
+        _shareState.update { if (it.requestId == requestId) it.copy(
+            message = context.getString(R.string.shelf_share_v21_returned)
+        ) else it }
+    }
+
+    fun clearShareMessage(requestId: Long, message: String) {
+        _shareState.update { if (it.requestId == requestId && it.message == message) it.copy(message = null) else it }
+    }
+
     private fun createComicZip(comic: Comic, zipFile: File) {
-        val srcDir = File(comic.directoryPath)
-        if (!srcDir.isDirectory) return
-        val images = srcDir.listFiles()?.filter {
-            it.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp", "bmp", "gif")
-        }?.sortedBy { it.name } ?: return
-        if (images.isEmpty()) return
-        java.util.zip.ZipOutputStream(FileOutputStream(zipFile)).use { zos ->
-            for (img in images) {
-                zos.putNextEntry(java.util.zip.ZipEntry(img.name))
-                img.inputStream().use { it.copyTo(zos) }
-                zos.closeEntry()
-            }
-        }
+        writeComicArchive(File(comic.directoryPath), zipFile)
     }
 
     private fun exportZipName(comic: Comic): String {
@@ -413,8 +594,8 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
         return if (jmId != null) "[JM$jmId] $safeName.zip" else "$safeName.zip"
     }
 
-    fun clearImportMessage() {
-        _importState.value = ImportState()
+    fun clearImportMessage(batchId: Long) {
+        _importState.update { it.acknowledgeMessage(batchId) }
     }
 
     fun bindJmId(comic: Comic, jmId: String) {
@@ -440,17 +621,18 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
         }
     }
 
-    private fun saveCoverImage(context: Context, imageFile: File, comicName: String): File {
-        val coversDir = File(context.filesDir, "covers")
-        if (!coversDir.exists()) coversDir.mkdirs()
+    private fun saveCoverImage(context: Context, imageFile: File): File {
         val extension = imageFile.extension.ifEmpty { "jpg" }
-        val coverFile = File(coversDir, "${comicName}_cover.$extension")
-        if (!coverFile.exists()) {
+        val coverFile = ZipUtils.createImportCoverFile(context.filesDir, extension)
+        try {
             imageFile.inputStream().use { input ->
                 FileOutputStream(coverFile).use { output ->
                     input.copyTo(output)
                 }
             }
+        } catch (error: Exception) {
+            coverFile.delete()
+            throw error
         }
         return coverFile
     }
@@ -489,10 +671,11 @@ class MainViewModel(private val repository: ComicRepository) : ViewModel() {
         return name.toLongOrNull() ?: name.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
     }
 
-    class Factory(private val repository: ComicRepository) : ViewModelProvider.Factory {
+    class Factory(private val repository: ComicRepository, private val context: Context) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return MainViewModel(repository) as T
+            val preferences = context.applicationContext.getSharedPreferences(ShelfSortPreferences.FILE_NAME, Context.MODE_PRIVATE)
+            return MainViewModel(repository, ShelfSortPreferences(preferences)) as T
         }
     }
 }

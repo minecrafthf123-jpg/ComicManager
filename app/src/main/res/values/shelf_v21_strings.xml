@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_v21_import_processed">Processed %1$d / %2$d archives</string>
+    <string name="shelf_v21_import_current">Current archive: %1$d / %2$d</string>
+    <string name="shelf_v21_import_preparing">Preparing import…</string>
+    <string name="shelf_v21_import_checking">Checking existing library items…</string>
+    <string name="shelf_v21_import_extracting">Extracting images…</string>
+    <string name="shelf_v21_import_saving">Saving cover and library entry…</string>
+    <string name="shelf_v21_import_extracted">%1$d images extracted · %2$.1f MB</string>
+    <string name="shelf_v21_import_counts">Added %1$d · IDs repaired %2$d · Skipped %3$d · Failed %4$d</string>
+    <string name="shelf_v21_import_background_hint">Import continues while you use other screens in the app.</string>
+    <string name="shelf_v21_import_finished">Import completed</string>
+    <string name="shelf_v21_import_finished_with_errors">Import completed with errors</string>
+    <string name="shelf_v21_import_failed">Import failed</string>
+    <string name="shelf_v21_import_stopped">Import stopped after %1$d / %2$d archives</string>
+</resources>

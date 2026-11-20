@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_v21_import_processed">已处理 %1$d / %2$d 本</string>
+    <string name="shelf_v21_import_current">当前漫画：%1$d / %2$d</string>
+    <string name="shelf_v21_import_preparing">正在准备导入…</string>
+    <string name="shelf_v21_import_checking">正在检查书架重复项…</string>
+    <string name="shelf_v21_import_extracting">正在解压漫画图片…</string>
+    <string name="shelf_v21_import_saving">正在保存封面并加入书架…</string>
+    <string name="shelf_v21_import_extracted">已解压 %1$d 张图片 · %2$.1f MB</string>
+    <string name="shelf_v21_import_counts">已添加 %1$d · 修复编号 %2$d · 跳过 %3$d · 失败 %4$d</string>
+    <string name="shelf_v21_import_background_hint">切换到应用内其他页面后，导入会继续进行</string>
+    <string name="shelf_v21_import_finished">导入完成</string>
+    <string name="shelf_v21_import_finished_with_errors">导入结束，部分文件失败</string>
+    <string name="shelf_v21_import_failed">导入失败</string>
+    <string name="shelf_v21_import_stopped">导入已停止，已处理 %1$d / %2$d 本</string>
+</resources>
