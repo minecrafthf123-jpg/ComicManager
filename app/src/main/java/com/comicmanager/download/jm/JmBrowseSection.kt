@@ -57,7 +57,6 @@ internal fun coverUrlFor(albumId: String): String {
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun JmBrowseSection(
-    onBack: () -> Unit,
     isActive: Boolean,
     onSearch: suspend (String, Int) -> Pair<Int, List<JmSearchItem>>,
     onGetDetail: suspend (String) -> JmAlbum,
@@ -69,8 +68,7 @@ fun JmBrowseSection(
     isBusy: Boolean,
     externalOpenId: String? = null,
     externalOpenToken: Int = 0,
-    onExternalConsumed: () -> Unit = {},
-    onSwipeToHistoryEnabledChange: (Boolean) -> Unit = {}
+    onExternalConsumed: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -162,14 +160,10 @@ fun JmBrowseSection(
             detailAlbumId != null -> detailAlbumId = null
             selectionMode -> clearSelection()
             searchFocused -> dismissKeyboard()
-            else -> onBack()
         }
     }
 
-    SideEffect {
-        onSwipeToHistoryEnabledChange(isActive && detailAlbumId == null && externalOpenId == null && !searchFocused)
-    }
-    LaunchedEffect(isActive) { if (!isActive) dismissKeyboard() }
+    LaunchedEffect(isActive) { if (!isActive && searchFocused) dismissKeyboard() }
     BackHandler(enabled = isActive && (selectionMode || searchFocused)) { handleBack() }
 
     LaunchedEffect(externalOpenToken, externalOpenId) {
@@ -185,8 +179,10 @@ fun JmBrowseSection(
             TopAppBar(
                 title = { Text(stringResource(R.string.jm_v2_api_search), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
-                    IconButton(onClick = ::handleBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
+                    if (selectionMode || searchFocused) {
+                        IconButton(onClick = ::handleBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
+                        }
                     }
                 },
                 actions = {

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="folder_v22_title">Folders</string>
+    <string name="folder_v22_new">New folder</string>
+    <string name="folder_v22_name">Folder name</string>
+    <string name="folder_v22_create">Create</string>
+    <string name="folder_v22_save">Save</string>
+    <string name="folder_v22_rename">Rename folder</string>
+    <string name="folder_v22_actions">Folder options</string>
+    <string name="folder_v22_delete">Delete folder</string>
+    <string name="folder_v22_delete_prompt">Delete “%1$s”? Its comics will stay in your library.</string>
+    <string name="folder_v22_remove">Remove from folder</string>
+    <string name="folder_v22_remove_prompt">Remove “%1$s” from this folder? It will stay in your library.</string>
+    <string name="folder_v22_empty">No folders yet</string>
+    <string name="folder_v22_empty_hint">Create a folder to group your comics.</string>
+    <string name="folder_v22_empty_comics">This folder is empty</string>
+    <string name="folder_v22_empty_comics_hint">Select comics in your library and choose Add to folder.</string>
+    <string name="folder_v22_name_required">Enter a folder name.</string>
+    <string name="folder_v22_name_exists">A folder with that name already exists.</string>
+    <string name="folder_v22_missing">This folder no longer exists.</string>
+    <string name="folder_v22_operation_failed">Could not update the folder. Try again.</string>
+    <plurals name="folder_v22_count">
+        <item quantity="one">%d comic</item>
+        <item quantity="other">%d comics</item>
+    </plurals>
+</resources>

@@ -78,6 +78,20 @@ enum class SortMode(@StringRes val labelRes: Int) {
     NAME_NUM_ASC(R.string.sort_number_asc)
 }
 
+internal fun sortShelfComics(comics: List<Comic>, mode: SortMode): List<Comic> {
+    val (downloads, local) = comics.partition { it.isJmDownload }
+    fun sort(group: List<Comic>): List<Comic> = when (mode) {
+        SortMode.TIME_DESC -> group.sortedByDescending { it.createdAt }
+        SortMode.TIME_ASC -> group.sortedBy { it.createdAt }
+        SortMode.NAME_NUM_DESC -> group.sortedByDescending { parseNameNumber(it.name) }
+        SortMode.NAME_NUM_ASC -> group.sortedBy { parseNameNumber(it.name) }
+    }
+    return sort(downloads) + sort(local)
+}
+
+private fun parseNameNumber(name: String): Long =
+    name.toLongOrNull() ?: name.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
+
 class MainViewModel(
     private val repository: ComicRepository,
     private val sortPreferences: ShelfSortPreferences
@@ -110,12 +124,7 @@ class MainViewModel(
         val filtered = if (query.isBlank()) comics
         else comics.filter { it.name.contains(query, ignoreCase = true) }
 
-        when (sort) {
-            SortMode.TIME_DESC -> filtered.sortedByDescending { it.createdAt }
-            SortMode.TIME_ASC -> filtered.sortedBy { it.createdAt }
-            SortMode.NAME_NUM_DESC -> filtered.sortedByDescending { parseNameNumber(it.name) }
-            SortMode.NAME_NUM_ASC -> filtered.sortedBy { parseNameNumber(it.name) }
-        }
+        sortShelfComics(filtered, sort)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _importState = MutableStateFlow(ImportState())
@@ -665,10 +674,6 @@ class MainViewModel(
             repaired++
         }
         return repaired
-    }
-
-    private fun parseNameNumber(name: String): Long {
-        return name.toLongOrNull() ?: name.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
     }
 
     class Factory(private val repository: ComicRepository, private val context: Context) : ViewModelProvider.Factory {

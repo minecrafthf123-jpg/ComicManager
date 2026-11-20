@@ -1,6 +1,5 @@
 package com.comicmanager.download
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -19,17 +18,14 @@ import com.comicmanager.download.jm.JmBrowseSection
 @Composable
 fun JmDownloadScreen(
     viewModel: JmDownloadViewModel,
-    onBack: () -> Unit,
     isActive: Boolean = true,
     externalOpenId: String? = null,
     externalOpenToken: Int = 0,
-    onExternalConsumed: () -> Unit = {},
-    onSwipeToHistoryEnabledChange: (Boolean) -> Unit = {}
+    onExternalConsumed: () -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     SideEffect { viewModel.setAppContext(context) }
-    BackHandler(enabled = isActive, onBack = onBack)
 
     Scaffold(
         bottomBar = {
@@ -114,7 +110,6 @@ fun JmDownloadScreen(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
             JmBrowseSection(
-                onBack = onBack,
                 isActive = isActive,
                 onSearch = viewModel::searchJm,
                 onGetDetail = viewModel::getJmAlbumDetail,
@@ -126,8 +121,7 @@ fun JmDownloadScreen(
                 isBusy = state.isDownloading,
                 externalOpenId = externalOpenId,
                 externalOpenToken = externalOpenToken,
-                onExternalConsumed = onExternalConsumed,
-                onSwipeToHistoryEnabledChange = onSwipeToHistoryEnabledChange
+                onExternalConsumed = onExternalConsumed
             )
         }
     }

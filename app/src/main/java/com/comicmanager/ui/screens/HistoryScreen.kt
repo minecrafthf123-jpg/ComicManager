@@ -9,8 +9,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -40,8 +38,7 @@ import java.io.File
 @Composable
 fun HistoryScreen(
     viewModel: HistoryViewModel,
-    onComicClick: (Long) -> Unit,
-    onBack: () -> Unit
+    onComicClick: (Long) -> Unit
 ) {
     val comics by viewModel.recentComics.collectAsState()
     val scope = rememberCoroutineScope()
@@ -50,15 +47,9 @@ fun HistoryScreen(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.reading_history)) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    titleContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
         }

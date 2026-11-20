@@ -16,7 +16,7 @@ class ComicManagerApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         val database = AppDatabase.getInstance(this)
-        repository = ComicRepository(database.comicDao())
+        repository = ComicRepository(database.comicDao(), database.comicFolderDao())
     }
 
     override fun newImageLoader(): ImageLoader {

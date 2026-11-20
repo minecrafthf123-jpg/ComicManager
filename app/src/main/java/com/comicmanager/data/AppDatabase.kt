@@ -7,11 +7,18 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.comicmanager.model.Comic
+import com.comicmanager.model.ComicFolder
+import com.comicmanager.model.ComicFolderMembership
 
-@Database(entities = [Comic::class], version = 2, exportSchema = false)
+@Database(
+    entities = [Comic::class, ComicFolder::class, ComicFolderMembership::class],
+    version = 3,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun comicDao(): ComicDao
+    abstract fun comicFolderDao(): ComicFolderDao
 
     companion object {
         @Volatile
@@ -30,7 +37,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "comic_manager.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { INSTANCE = it }
             }

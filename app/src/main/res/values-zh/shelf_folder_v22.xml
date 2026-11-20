@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_folder_v22_add">加入文件夹</string>
+    <string name="shelf_folder_v22_choose_hint">选择已有文件夹，或输入名称新建文件夹</string>
+    <string name="shelf_folder_v22_new">新建文件夹</string>
+    <string name="shelf_folder_v22_name">文件夹名称</string>
+    <string name="shelf_folder_v22_existing">已有文件夹</string>
+    <string name="shelf_folder_v22_empty">暂无文件夹，可以在上方新建</string>
+    <string name="shelf_folder_v22_confirm">加入</string>
+    <string name="shelf_folder_v22_create_add">创建并加入</string>
+    <string name="shelf_folder_v22_name_required">请输入文件夹名称</string>
+    <string name="shelf_folder_v22_name_exists">该名称的文件夹已存在，请在下方选择，或使用其他名称</string>
+    <string name="shelf_folder_v22_missing">此文件夹已不存在，请选择其他文件夹或新建</string>
+    <string name="shelf_folder_v22_no_comics">所选漫画已不在书架，请关闭对话框后重新选择</string>
+    <string name="shelf_folder_v22_load_failed">无法读取文件夹列表，请重试</string>
+    <string name="shelf_folder_v22_save_failed">加入文件夹失败，当前勾选已保留，请重试</string>
+    <string name="shelf_folder_v22_created_added">已创建“%1$s”，并加入所选漫画</string>
+    <string name="shelf_folder_v22_already_added">所选漫画已在“%1$s”中</string>
+    <plurals name="shelf_folder_v22_added">
+        <item quantity="other">已将 %1$d 本漫画加入“%2$s”</item>
+    </plurals>
+    <plurals name="shelf_folder_v22_comic_count">
+        <item quantity="other">%1$d 本漫画</item>
+    </plurals>
+</resources>

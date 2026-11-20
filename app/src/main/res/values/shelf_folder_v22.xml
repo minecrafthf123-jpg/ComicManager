@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_folder_v22_add">Add to folder</string>
+    <string name="shelf_folder_v22_choose_hint">Choose a folder, or create one with your own name.</string>
+    <string name="shelf_folder_v22_new">Create a new folder</string>
+    <string name="shelf_folder_v22_name">Folder name</string>
+    <string name="shelf_folder_v22_existing">Existing folders</string>
+    <string name="shelf_folder_v22_empty">No folders yet. Create one above.</string>
+    <string name="shelf_folder_v22_confirm">Add</string>
+    <string name="shelf_folder_v22_create_add">Create and add</string>
+    <string name="shelf_folder_v22_name_required">Enter a folder name.</string>
+    <string name="shelf_folder_v22_name_exists">A folder with this name already exists. Choose it below or enter another name.</string>
+    <string name="shelf_folder_v22_missing">This folder no longer exists. Choose another folder or create a new one.</string>
+    <string name="shelf_folder_v22_no_comics">The selected comics are no longer in the library. Close this dialog and select again.</string>
+    <string name="shelf_folder_v22_load_failed">Could not load folders. Please try again.</string>
+    <string name="shelf_folder_v22_save_failed">Could not add comics to the folder. Your selection has been kept. Please try again.</string>
+    <string name="shelf_folder_v22_created_added">Created “%1$s” and added the selected comics.</string>
+    <string name="shelf_folder_v22_already_added">The selected comics are already in “%1$s”.</string>
+    <plurals name="shelf_folder_v22_added">
+        <item quantity="one">Added %1$d comic to “%2$s”.</item>
+        <item quantity="other">Added %1$d comics to “%2$s”.</item>
+    </plurals>
+    <plurals name="shelf_folder_v22_comic_count">
+        <item quantity="one">%1$d comic</item>
+        <item quantity="other">%1$d comics</item>
+    </plurals>
+</resources>

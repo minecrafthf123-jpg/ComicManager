@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="folder_v22_title">文件夹</string>
+    <string name="folder_v22_new">新建文件夹</string>
+    <string name="folder_v22_name">文件夹名称</string>
+    <string name="folder_v22_create">创建</string>
+    <string name="folder_v22_save">保存</string>
+    <string name="folder_v22_rename">重命名文件夹</string>
+    <string name="folder_v22_actions">文件夹选项</string>
+    <string name="folder_v22_delete">删除文件夹</string>
+    <string name="folder_v22_delete_prompt">删除「%1$s」？其中的漫画仍保留在书架上。</string>
+    <string name="folder_v22_remove">从文件夹移除</string>
+    <string name="folder_v22_remove_prompt">将「%1$s」从当前文件夹移除？这本漫画仍保留在书架上。</string>
+    <string name="folder_v22_empty">还没有文件夹</string>
+    <string name="folder_v22_empty_hint">新建文件夹，将相关漫画归到一起。</string>
+    <string name="folder_v22_empty_comics">这个文件夹是空的</string>
+    <string name="folder_v22_empty_comics_hint">在书架选中漫画后，选择「加入文件夹」。</string>
+    <string name="folder_v22_name_required">请输入文件夹名称。</string>
+    <string name="folder_v22_name_exists">已存在同名文件夹。</string>
+    <string name="folder_v22_missing">这个文件夹已不存在。</string>
+    <string name="folder_v22_operation_failed">无法更新文件夹，请重试。</string>
+    <plurals name="folder_v22_count">
+        <item quantity="other">%d 本漫画</item>
+    </plurals>
+</resources>

@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items as listItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -20,8 +22,6 @@ import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
@@ -44,9 +45,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
+import androidx.lifecycle.viewmodel.compose.viewModel as composeViewModel
+import androidx.lifecycle.Lifecycle
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.comicmanager.R
+import com.comicmanager.data.ComicRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.comicmanager.model.Comic
@@ -54,6 +58,9 @@ import com.comicmanager.ui.viewmodel.MainViewModel
 import com.comicmanager.ui.viewmodel.ImportPhase
 import com.comicmanager.ui.viewmodel.ImportState
 import com.comicmanager.ui.viewmodel.SortMode
+import com.comicmanager.ui.viewmodel.ShelfFolderAssignmentState
+import com.comicmanager.ui.viewmodel.ShelfFolderAssignmentViewModel
+import com.comicmanager.ui.viewmodel.ShelfFolderIssue
 import java.io.File
 
 private enum class ComicActionDialogMode {
@@ -72,12 +79,16 @@ private enum class LanguageChoice(@StringRes val labelRes: Int, val languageTags
 @Composable
 fun MainScreen(
     viewModel: MainViewModel,
+    repository: ComicRepository,
+    isActive: Boolean,
     onComicClick: (Long) -> Unit,
-    onHistoryClick: () -> Unit,
-    onJmDownloadClick: () -> Unit,
-    onJmDetail: (String) -> Unit = {},
-    onSelectModeChange: (Boolean) -> Unit = {}
+    onJmDetail: (String) -> Unit = {}
 ) {
+    val folderViewModel: ShelfFolderAssignmentViewModel = composeViewModel(
+        key = "shelf_folder_assignment",
+        factory = ShelfFolderAssignmentViewModel.Factory(repository)
+    )
+    val folderAssignment by folderViewModel.state.collectAsState()
     val allComics by viewModel.allComics.collectAsState()
     val displayComics by viewModel.displayComics.collectAsState()
     val importState by viewModel.importState.collectAsState()
@@ -91,6 +102,7 @@ fun MainScreen(
     val bulkProgress by viewModel.bulkProgress.collectAsState()
     val shareState by viewModel.shareState.collectAsState()
     val context = LocalContext.current
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateFlow.collectAsState()
     val focusManager = LocalFocusManager.current
     val scope = rememberCoroutineScope()
 
@@ -105,7 +117,8 @@ fun MainScreen(
         viewModel.onShareChooserReturned(context, launchedShareId)
     }
 
-    LaunchedEffect(shareState.requestId, shareState.pendingIntent) {
+    LaunchedEffect(isActive, lifecycleState, shareState.requestId, shareState.pendingIntent) {
+        if (!isActive || !lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) return@LaunchedEffect
         shareState.pendingIntent?.let { intent ->
             val requestId = shareState.requestId
             try {
@@ -143,8 +156,6 @@ fun MainScreen(
         if (uris.isNotEmpty()) { viewModel.importComics(context, uris) }
     }
 
-    LaunchedEffect(selectMode) { onSelectModeChange(selectMode) }
-
     LaunchedEffect(importState.batchId, importState.importMessage) {
         importState.importMessage?.let { message ->
             val batchId = importState.batchId
@@ -154,6 +165,22 @@ fun MainScreen(
                 duration = SnackbarDuration.Indefinite
             )
             viewModel.clearImportMessage(batchId)
+        }
+    }
+
+    LaunchedEffect(isActive, folderAssignment.notice?.id) {
+        if (!isActive) return@LaunchedEffect
+        folderAssignment.notice?.let { notice ->
+            val message = when {
+                notice.created -> context.getString(R.string.shelf_folder_v22_created_added, notice.folderName)
+                notice.addedCount == 0 -> context.getString(R.string.shelf_folder_v22_already_added, notice.folderName)
+                else -> context.resources.getQuantityString(
+                    R.plurals.shelf_folder_v22_added, notice.addedCount, notice.addedCount, notice.folderName
+                )
+            }
+            snackbarHostState.currentSnackbarData?.dismiss()
+            snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Long)
+            folderViewModel.acknowledgeNotice(notice.id)
         }
     }
 
@@ -260,12 +287,6 @@ fun MainScreen(
                             )
                         }
                     }
-                    IconButton(onClick = onHistoryClick) {
-                        Icon(Icons.Filled.DateRange, contentDescription = stringResource(R.string.reading_history), tint = MaterialTheme.colorScheme.onPrimary)
-                    }
-                    IconButton(onClick = onJmDownloadClick) {
-                        Icon(Icons.Filled.KeyboardArrowDown, contentDescription = stringResource(R.string.jmcomic_download), tint = MaterialTheme.colorScheme.onPrimary)
-                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -334,26 +355,46 @@ fun MainScreen(
                 }
                 if (selectMode) {
                     Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shadowElevation = 8.dp) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            TextButton(onClick = { viewModel.toggleSelectMode() }) { Text(stringResource(R.string.action_cancel), color = MaterialTheme.colorScheme.error) }
-                            TextButton(onClick = {
-                                if (selectedIds.size == displayComics.size) viewModel.clearSelection() else viewModel.selectAll()
-                            }) { Text(stringResource(if (selectedIds.size == displayComics.size) R.string.invert_selection else R.string.select_all)) }
-                            Text(
-                                pluralStringResource(
-                                    R.plurals.selected_count,
-                                    selectedIds.size,
-                                    selectedIds.size
-                                ),
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.weight(1f),
-                                textAlign = TextAlign.Center
-                            )
-                            TextButton(enabled = !bulkProgress.isRunning, onClick = { viewModel.exportSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } }) { Text(stringResource(R.string.action_export)) }
-                            TextButton(enabled = !bulkProgress.isRunning, onClick = { viewModel.shareSelected(context) }) { Text(stringResource(R.string.action_share)) }
-                            TextButton(enabled = !bulkProgress.isRunning, onClick = {
-                                viewModel.deleteSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
-                            }) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
+                        Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { viewModel.toggleSelectMode() }) { Text(stringResource(R.string.action_cancel)) }
+                                Text(
+                                    pluralStringResource(R.plurals.selected_count, selectedIds.size, selectedIds.size),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.weight(1f),
+                                    textAlign = TextAlign.Center
+                                )
+                                TextButton(onClick = {
+                                    if (selectedIds.size == displayComics.size) viewModel.clearSelection() else viewModel.selectAll()
+                                }) { Text(stringResource(if (selectedIds.size == displayComics.size) R.string.invert_selection else R.string.select_all)) }
+                            }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                val canAct = !bulkProgress.isRunning && selectedIds.isNotEmpty() && !folderAssignment.isSaving
+                                TextButton(
+                                    enabled = canAct,
+                                    onClick = {
+                                        val liveSelected = allComics.filter { it.id in selectedIds }.map { it.id }
+                                        folderViewModel.open(liveSelected)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = PaddingValues(horizontal = 4.dp)
+                                ) { Text(stringResource(R.string.shelf_folder_v22_add), style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center) }
+                                TextButton(
+                                    enabled = canAct,
+                                    onClick = { viewModel.exportSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text(stringResource(R.string.action_export)) }
+                                TextButton(
+                                    enabled = canAct,
+                                    onClick = { viewModel.shareSelected(context) },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text(stringResource(R.string.action_share)) }
+                                TextButton(
+                                    enabled = canAct,
+                                    onClick = { viewModel.deleteSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } },
+                                    modifier = Modifier.weight(1f)
+                                ) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
+                            }
                         }
                     }
                 }
@@ -391,7 +432,11 @@ fun MainScreen(
         }
     }
 
-    if (showLanguageDialog) {
+    if (isActive && folderAssignment.isOpen) {
+        ShelfFolderAssignmentDialog(folderAssignment, folderViewModel)
+    }
+
+    if (isActive && showLanguageDialog) {
         val currentTags = AppCompatDelegate.getApplicationLocales().toLanguageTags()
         val selectedLanguage = when {
             currentTags.startsWith("zh", ignoreCase = true) -> LanguageChoice.SIMPLIFIED_CHINESE
@@ -437,7 +482,7 @@ fun MainScreen(
         )
     }
 
-    showActionMenu?.let { comic ->
+    showActionMenu?.takeIf { isActive }?.let { comic ->
         val currentJmId = comic.jmId.trim()
             .takeIf { it.toLongOrNull()?.let { value -> value > 0 } == true }
         val hasDuplicateJmId = currentJmId != null && currentJmId in duplicateJmIds
@@ -614,6 +659,128 @@ fun MainScreen(
             }
         )
     }
+}
+
+@Composable
+private fun ShelfFolderAssignmentDialog(
+    state: ShelfFolderAssignmentState,
+    viewModel: ShelfFolderAssignmentViewModel
+) {
+    val enabled = !state.isSaving && !state.isLoading
+    AlertDialog(
+        onDismissRequest = viewModel::dismiss,
+        title = { Text(stringResource(R.string.shelf_folder_v22_add)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                state.issue?.let { issue ->
+                    Text(
+                        stringResource(when (issue) {
+                            ShelfFolderIssue.NAME_REQUIRED -> R.string.shelf_folder_v22_name_required
+                            ShelfFolderIssue.NAME_EXISTS -> R.string.shelf_folder_v22_name_exists
+                            ShelfFolderIssue.FOLDER_MISSING -> R.string.shelf_folder_v22_missing
+                            ShelfFolderIssue.NO_COMICS -> R.string.shelf_folder_v22_no_comics
+                            ShelfFolderIssue.LOAD_FAILED -> R.string.shelf_folder_v22_load_failed
+                            ShelfFolderIssue.SAVE_FAILED -> R.string.shelf_folder_v22_save_failed
+                        }),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    if (issue == ShelfFolderIssue.LOAD_FAILED) {
+                        TextButton(onClick = viewModel::reloadFolders) { Text(stringResource(R.string.action_retry)) }
+                    }
+                }
+                LazyColumn(
+                    Modifier.fillMaxWidth().heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        Text(
+                            pluralStringResource(R.plurals.selected_count, state.comicIds.size, state.comicIds.size),
+                            style = MaterialTheme.typography.titleSmall
+                        )
+                        Text(
+                            stringResource(R.string.shelf_folder_v22_choose_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    item {
+                        Row(
+                            Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = viewModel::chooseNewFolder),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = state.creating, onClick = null, enabled = enabled)
+                            Text(stringResource(R.string.shelf_folder_v22_new))
+                        }
+                    }
+                    if (state.creating) {
+                        item {
+                            OutlinedTextField(
+                                value = state.newName,
+                                onValueChange = viewModel::updateName,
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = enabled,
+                                singleLine = true,
+                                label = { Text(stringResource(R.string.shelf_folder_v22_name)) },
+                                isError = state.issue == ShelfFolderIssue.NAME_REQUIRED || state.issue == ShelfFolderIssue.NAME_EXISTS,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = { viewModel.save() })
+                            )
+                        }
+                    }
+                    item {
+                        HorizontalDivider()
+                        Text(
+                            stringResource(R.string.shelf_folder_v22_existing),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                    if (state.isLoading) {
+                        item {
+                            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(Modifier.size(24.dp))
+                            }
+                        }
+                    } else if (state.folders.isEmpty()) {
+                        item { Text(stringResource(R.string.shelf_folder_v22_empty), style = MaterialTheme.typography.bodySmall) }
+                    }
+                    listItems(state.folders, key = { it.id }) { folder ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable(enabled = enabled) { viewModel.chooseFolder(folder.id) },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = !state.creating && state.folderId == folder.id, onClick = null, enabled = enabled)
+                            Column(Modifier.weight(1f).padding(vertical = 6.dp)) {
+                                Text(folder.name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    pluralStringResource(R.plurals.shelf_folder_v22_comic_count, folder.comicCount, folder.comicCount),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = viewModel::save,
+                enabled = enabled && state.comicIds.isNotEmpty() &&
+                    (if (state.creating) state.newName.isNotBlank() else state.folders.any { it.id == state.folderId })
+            ) {
+                if (state.isSaving) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(stringResource(if (state.creating) R.string.shelf_folder_v22_create_add else R.string.shelf_folder_v22_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = viewModel::dismiss, enabled = !state.isSaving) { Text(stringResource(R.string.action_cancel)) }
+        }
+    )
 }
 
 @Composable
