@@ -12,9 +12,11 @@ import com.comicmanager.model.ComicFolderSummary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -22,7 +24,6 @@ import kotlinx.coroutines.withContext
 enum class ShelfFolderIssue { NAME_REQUIRED, NAME_EXISTS, FOLDER_MISSING, NO_COMICS, LOAD_FAILED, SAVE_FAILED }
 
 data class ShelfFolderNotice(
-    val id: Long,
     val folderName: String,
     val created: Boolean,
     val addedCount: Int = 0
@@ -37,16 +38,16 @@ data class ShelfFolderAssignmentState(
     val folderId: Long? = null,
     val creating: Boolean = false,
     val newName: String = "",
-    val issue: ShelfFolderIssue? = null,
-    val notice: ShelfFolderNotice? = null
+    val issue: ShelfFolderIssue? = null
 )
 
 /** Owns only the add dialog. The bookshelf's selected IDs are never changed by a failed save. */
 class ShelfFolderAssignmentViewModel(private val repository: ComicRepository) : ViewModel() {
     private val _state = MutableStateFlow(ShelfFolderAssignmentState())
     val state = _state.asStateFlow()
+    private val noticeChannel = Channel<ShelfFolderNotice>(Channel.CONFLATED)
+    val notices = noticeChannel.receiveAsFlow()
     private var foldersJob: Job? = null
-    private var noticeSequence = 0L
 
     fun open(comicIds: Collection<Long>) {
         if (_state.value.isSaving) return
@@ -133,18 +134,12 @@ class ShelfFolderAssignmentViewModel(private val repository: ComicRepository) : 
                 }
                 foldersJob?.cancel()
                 val notice = ShelfFolderNotice(
-                    id = ++noticeSequence,
                     folderName = if (snapshot.creating) name else requireNotNull(folder).name,
                     created = snapshot.creating,
                     addedCount = added
                 )
-                _state.update {
-                    it.copy(
-                        isOpen = false,
-                        isSaving = false,
-                        notice = notice
-                    )
-                }
+                _state.update { it.copy(isOpen = false, isSaving = false) }
+                noticeChannel.trySend(notice)
             } catch (cancelled: CancellationException) {
                 _state.update { it.copy(isSaving = false) }
                 throw cancelled
@@ -159,10 +154,6 @@ class ShelfFolderAssignmentViewModel(private val repository: ComicRepository) : 
                 _state.update { it.copy(isSaving = false, issue = failure) }
             }
         }
-    }
-
-    fun acknowledgeNotice(id: Long) {
-        _state.update { if (it.notice?.id == id) it.copy(notice = null) else it }
     }
 
     class Factory(private val repository: ComicRepository) : ViewModelProvider.Factory {

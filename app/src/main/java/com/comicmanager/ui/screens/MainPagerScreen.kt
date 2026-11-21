@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -18,8 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,7 +59,11 @@ fun MainPagerScreen(
         }
     }
 
-    Scaffold(bottomBar = { MainPageIndicator(pagerState.currentPage) }) { padding ->
+    Scaffold(bottomBar = {
+        MainPageNavigation(pagerState.currentPage) { page ->
+            scope.launch { pagerState.animateScrollToPage(page) }
+        }
+    }) { padding ->
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
@@ -108,15 +113,17 @@ fun MainPagerScreen(
 }
 
 @Composable
-private fun MainPageIndicator(currentPage: Int) {
+private fun MainPageNavigation(currentPage: Int, onPageSelected: (Int) -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 2.dp) {
-        Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp, vertical = 6.dp)) {
+        Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp).selectableGroup()) {
             MainPage.entries.forEachIndexed { index, page ->
                 val isCurrent = index == currentPage
                 Column(
-                    modifier = Modifier.weight(1f).semantics(mergeDescendants = true) { selected = isCurrent },
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                        .selectable(selected = isCurrent, role = Role.Tab, onClick = { onPageSelected(index) })
+                        .padding(vertical = 6.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
                 ) {
                     Box(
                         Modifier.size(width = 18.dp, height = 3.dp).background(

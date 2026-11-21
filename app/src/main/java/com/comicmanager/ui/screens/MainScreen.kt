@@ -52,6 +52,7 @@ import coil.request.ImageRequest
 import com.comicmanager.R
 import com.comicmanager.data.ComicRepository
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import com.comicmanager.model.Comic
 import com.comicmanager.ui.viewmodel.MainViewModel
@@ -168,9 +169,12 @@ fun MainScreen(
         }
     }
 
-    LaunchedEffect(isActive, folderAssignment.notice?.id) {
-        if (!isActive) return@LaunchedEffect
-        folderAssignment.notice?.let { notice ->
+    val isImporting = importState.isImporting
+    LaunchedEffect(folderViewModel, isActive, isImporting) {
+        if (!isActive && !isImporting) return@LaunchedEffect
+        folderViewModel.notices.collectLatest { notice ->
+            // Import progress and its result take precedence over an earlier folder notification.
+            if (isImporting) return@collectLatest
             val message = when {
                 notice.created -> context.getString(R.string.shelf_folder_v22_created_added, notice.folderName)
                 notice.addedCount == 0 -> context.getString(R.string.shelf_folder_v22_already_added, notice.folderName)
@@ -178,9 +182,7 @@ fun MainScreen(
                     R.plurals.shelf_folder_v22_added, notice.addedCount, notice.addedCount, notice.folderName
                 )
             }
-            snackbarHostState.currentSnackbarData?.dismiss()
             snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Long)
-            folderViewModel.acknowledgeNotice(notice.id)
         }
     }
 
@@ -296,7 +298,7 @@ fun MainScreen(
             )
         }
     ) { paddingValues ->
-        if (importState.isImporting) {
+        if (isImporting) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                 ImportProgressContent(importState)
             }
@@ -868,7 +870,15 @@ private fun ComicGridItem(comic: Comic, isSelected: Boolean, selectMode: Boolean
                     loading = { Box(Modifier.fillMaxSize().background(Color.LightGray), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) } },
                     error = { Box(Modifier.fillMaxSize().background(Color.Gray), contentAlignment = Alignment.Center) { Text("📖", style = MaterialTheme.typography.headlineMedium) } }
                 )
-                Text(comic.name, Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp), style = MaterialTheme.typography.labelSmall, maxLines = 4, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
+                Text(
+                    text = comic.name,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    minLines = 4,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center
+                )
             }
             if (selectMode) {
                 Checkbox(checked = isSelected, onCheckedChange = { onClick() }, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp))
