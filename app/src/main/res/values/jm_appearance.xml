@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_search_prompt">Enter a keyword and press Enter to search.</string>
+    <string name="jm_clear_query">Clear search text</string>
+</resources>

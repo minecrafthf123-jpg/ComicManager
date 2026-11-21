@@ -2,10 +2,10 @@ package com.comicmanager.ui.screens
 
 import android.icu.text.AlphabeticIndex
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -24,24 +26,29 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,9 +64,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
@@ -67,15 +74,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import com.comicmanager.R
 import com.comicmanager.model.Comic
 import com.comicmanager.model.ComicFolderSummary
+import com.comicmanager.ui.theme.pressScale
 import com.comicmanager.ui.viewmodel.FolderActionState
 import com.comicmanager.ui.viewmodel.FolderViewModel
-import java.io.File
 import java.util.Locale
 
 private sealed interface FolderDialog {
@@ -124,6 +131,7 @@ fun FolderScreen(
     BackHandler(enabled = isActive && openFolderId != null, onBack = ::closeFolder)
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -136,23 +144,29 @@ fun FolderScreen(
                 navigationIcon = {
                     if (openFolder != null) {
                         IconButton(onClick = ::closeFolder) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back))
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, stringResource(R.string.action_back))
                         }
                     }
                 },
                 actions = {
                     if (openFolder == null) {
-                        IconButton(onClick = { openDialog(FolderDialog.Create) }) {
-                            Icon(Icons.Default.Add, stringResource(R.string.folder_v22_new))
+                        val interaction = remember { MutableInteractionSource() }
+                        FilledTonalIconButton(
+                            onClick = { openDialog(FolderDialog.Create) },
+                            modifier = Modifier.padding(end = 8.dp).pressScale(interaction),
+                            interactionSource = interaction
+                        ) {
+                            Icon(Icons.Rounded.Add, stringResource(R.string.folder_v22_new))
                         }
                     } else {
                         Box {
                             IconButton(onClick = { showOptions = true }) {
-                                Icon(Icons.Default.MoreVert, stringResource(R.string.folder_v22_actions))
+                                Icon(Icons.Rounded.MoreVert, stringResource(R.string.folder_v22_actions))
                             }
                             DropdownMenu(expanded = showOptions, onDismissRequest = { showOptions = false }) {
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.folder_v22_rename)) },
+                                    leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null) },
                                     onClick = {
                                         showOptions = false
                                         openDialog(FolderDialog.Rename(openFolder))
@@ -161,6 +175,9 @@ fun FolderScreen(
                                 DropdownMenuItem(
                                     text = {
                                         Text(stringResource(R.string.folder_v22_delete), color = MaterialTheme.colorScheme.error)
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Rounded.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error)
                                     },
                                     onClick = {
                                         showOptions = false
@@ -171,12 +188,7 @@ fun FolderScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { paddingValues ->
@@ -230,6 +242,7 @@ fun FolderScreen(
                     onSave = { viewModel.renameFolder(activeDialog.folder.id, it, onSave) }
                 )
                 is FolderDialog.Delete -> FolderConfirmDialog(
+                    icon = Icons.Rounded.Delete,
                     title = stringResource(R.string.folder_v22_delete),
                     message = stringResource(R.string.folder_v22_delete_prompt, activeDialog.folder.name),
                     action = actionState,
@@ -242,6 +255,7 @@ fun FolderScreen(
                     }
                 )
                 is FolderDialog.Remove -> FolderConfirmDialog(
+                    icon = Icons.Rounded.Close,
                     title = stringResource(R.string.folder_v22_remove),
                     message = stringResource(R.string.folder_v22_remove_prompt, activeDialog.comic.name),
                     action = actionState,
@@ -266,18 +280,19 @@ private fun FolderDirectory(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         state = listState,
-        contentPadding = PaddingValues(bottom = 16.dp)
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         sections.forEach { (label, entries) ->
             stickyHeader(key = "section-$label") {
                 Text(
                     label,
                     modifier = Modifier.fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .background(MaterialTheme.colorScheme.background)
                         .semantics { heading() }
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .padding(start = 4.dp, top = 10.dp, bottom = 4.dp),
                     style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             items(entries, key = { it.id }) { folder ->
@@ -287,10 +302,10 @@ private fun FolderDirectory(
                         Text(pluralStringResource(R.plurals.folder_v22_count, folder.comicCount, folder.comicCount))
                     },
                     leadingContent = { FolderTile() },
-                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
-                    modifier = Modifier.clickable { onOpen(folder.id) }
+                    trailingContent = { Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null) },
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.clip(MaterialTheme.shapes.medium).clickable { onOpen(folder.id) }
                 )
-                HorizontalDivider(Modifier.padding(start = 72.dp))
             }
         }
     }
@@ -333,29 +348,21 @@ private fun FolderContents(
         )
         else -> LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 16.dp)
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(comics, key = { it.id }) { comic ->
                 ListItem(
                     headlineContent = { NameText(comic.name) },
-                    leadingContent = {
-                        AsyncImage(
-                            model = remember(comic.coverPath) { File(comic.coverPath) },
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(42.dp, 58.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant)
-                        )
-                    },
+                    leadingContent = { CompactComicCover(comic) },
                     trailingContent = {
                         IconButton(onClick = { onRemove(comic) }) {
-                            Icon(Icons.Default.Close, stringResource(R.string.folder_v22_remove))
+                            Icon(Icons.Rounded.Close, stringResource(R.string.folder_v22_remove))
                         }
                     },
-                    modifier = Modifier.clickable { onComicClick(comic.id) }
+                    colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    modifier = Modifier.clip(MaterialTheme.shapes.large).clickable { onComicClick(comic.id) }
                 )
-                HorizontalDivider(Modifier.padding(start = 74.dp))
             }
         }
     }
@@ -363,7 +370,7 @@ private fun FolderContents(
 
 @Composable
 private fun NameText(name: String) {
-    Text(name, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
 }
 
 @Composable
@@ -376,45 +383,47 @@ private fun FolderLoading() {
 @Composable
 private fun EmptyFolderSpace(title: String, hint: String, onCreate: (() -> Unit)? = null) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 36.dp),
+        modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        FolderTile()
-        Spacer(Modifier.height(12.dp))
-        Text(title, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
-        Spacer(Modifier.height(4.dp))
+        FolderTile(size = 72.dp)
+        Spacer(Modifier.height(16.dp))
+        Text(title, style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(8.dp))
         Text(
             hint,
+            modifier = Modifier.widthIn(max = 320.dp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center
         )
         if (onCreate != null) {
             Spacer(Modifier.height(16.dp))
-            Button(onClick = onCreate) { Text(stringResource(R.string.folder_v22_new)) }
+            val interaction = remember { MutableInteractionSource() }
+            Button(
+                onClick = onCreate,
+                modifier = Modifier.pressScale(interaction),
+                interactionSource = interaction
+            ) {
+                Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text(stringResource(R.string.folder_v22_new))
+            }
         }
     }
 }
 
 @Composable
-private fun FolderTile() {
-    val glyphColor = MaterialTheme.colorScheme.primary
-    Box(
-        Modifier.size(40.dp).clip(RoundedCornerShape(9.dp)).background(glyphColor.copy(alpha = 0.12f)),
-        contentAlignment = Alignment.Center
+private fun FolderTile(size: Dp = 44.dp) {
+    Surface(
+        modifier = Modifier.size(size),
+        shape = RoundedCornerShape(27),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer
     ) {
-        Canvas(Modifier.size(24.dp)) {
-            val folder = Path().apply {
-                moveTo(size.width * 0.10f, size.height * 0.27f)
-                lineTo(size.width * 0.42f, size.height * 0.27f)
-                lineTo(size.width * 0.53f, size.height * 0.39f)
-                lineTo(size.width * 0.90f, size.height * 0.39f)
-                lineTo(size.width * 0.90f, size.height * 0.82f)
-                lineTo(size.width * 0.10f, size.height * 0.82f)
-                close()
-            }
-            drawPath(folder, glyphColor)
+        Box(contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_material_folder), null, Modifier.size(size * 0.5f))
         }
     }
 }
@@ -435,6 +444,13 @@ private fun FolderNameDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = {
+            if (folder == null) {
+                Icon(painterResource(R.drawable.ic_material_folder), contentDescription = null)
+            } else {
+                Icon(Icons.Rounded.Edit, contentDescription = null)
+            }
+        },
         title = { Text(stringResource(if (folder == null) R.string.folder_v22_new else R.string.folder_v22_rename)) },
         text = {
             OutlinedTextField(
@@ -465,6 +481,7 @@ private fun FolderNameDialog(
 
 @Composable
 private fun FolderConfirmDialog(
+    icon: ImageVector,
     title: String,
     message: String,
     action: FolderActionState,
@@ -473,6 +490,7 @@ private fun FolderConfirmDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
+        icon = { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

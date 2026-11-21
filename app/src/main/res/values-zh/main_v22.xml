@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="main_nav_jm_search">JM 搜索</string>
     <string name="main_v22_library">书架</string>
     <string name="main_v22_history">历史</string>
 </resources>

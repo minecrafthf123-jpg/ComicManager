@@ -1,27 +1,32 @@
 package com.comicmanager.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -29,16 +34,17 @@ import com.comicmanager.R
 import com.comicmanager.data.ComicRepository
 import com.comicmanager.download.JmDownloadScreen
 import com.comicmanager.download.JmDownloadViewModel
+import com.comicmanager.ui.theme.pressScale
 import com.comicmanager.ui.viewmodel.FolderViewModel
 import com.comicmanager.ui.viewmodel.HistoryViewModel
 import com.comicmanager.ui.viewmodel.MainViewModel
 import kotlinx.coroutines.launch
 
-private enum class MainPage(@StringRes val label: Int) {
-    LIBRARY(R.string.main_v22_library),
-    HISTORY(R.string.main_v22_history),
-    JM(R.string.jm_v2_api_search),
-    FOLDERS(R.string.folder_v22_title)
+private enum class MainPage(@StringRes val label: Int, @DrawableRes val icon: Int) {
+    LIBRARY(R.string.main_v22_library, R.drawable.ic_material_menu_book),
+    HISTORY(R.string.main_v22_history, R.drawable.ic_material_history),
+    JM(R.string.main_nav_jm_search, R.drawable.ic_material_search),
+    FOLDERS(R.string.folder_v22_title, R.drawable.ic_material_folder)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -59,11 +65,15 @@ fun MainPagerScreen(
         }
     }
 
-    Scaffold(bottomBar = {
-        MainPageNavigation(pagerState.currentPage) { page ->
-            scope.launch { pagerState.animateScrollToPage(page) }
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
+        bottomBar = {
+            MainPageNavigation(pagerState.currentPage) { page ->
+                scope.launch { pagerState.animateScrollToPage(page) }
+            }
         }
-    }) { padding ->
+    ) { padding ->
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding),
@@ -114,33 +124,35 @@ fun MainPagerScreen(
 
 @Composable
 private fun MainPageNavigation(currentPage: Int, onPageSelected: (Int) -> Unit) {
-    Surface(color = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 2.dp) {
-        Row(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp).selectableGroup()) {
-            MainPage.entries.forEachIndexed { index, page ->
-                val isCurrent = index == currentPage
-                Column(
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp)
-                        .selectable(selected = isCurrent, role = Role.Tab, onClick = { onPageSelected(index) })
-                        .padding(vertical = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)
-                ) {
-                    Box(
-                        Modifier.size(width = 18.dp, height = 3.dp).background(
-                            color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                            shape = RoundedCornerShape(50)
-                        )
+    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer, tonalElevation = 0.dp) {
+        MainPage.entries.forEachIndexed { index, page ->
+            val interactionSource = remember { MutableInteractionSource() }
+            NavigationBarItem(
+                selected = index == currentPage,
+                onClick = { onPageSelected(index) },
+                interactionSource = interactionSource,
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                icon = {
+                    Icon(
+                        painter = painterResource(page.icon),
+                        contentDescription = null,
+                        modifier = Modifier.pressScale(interactionSource)
                     )
+                },
+                label = {
                     Text(
-                        stringResource(page.label),
-                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
-                        style = MaterialTheme.typography.labelSmall,
+                        text = stringResource(page.label),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-            }
+            )
         }
     }
 }

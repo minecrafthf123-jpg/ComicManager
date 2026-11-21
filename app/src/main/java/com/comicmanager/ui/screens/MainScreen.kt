@@ -4,10 +4,12 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as listItems
@@ -15,14 +17,20 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.pullrefresh.PullRefreshIndicator
 import androidx.compose.material.pullrefresh.pullRefresh
 import androidx.compose.material.pullrefresh.rememberPullRefreshState
@@ -32,13 +40,21 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,6 +71,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import com.comicmanager.model.Comic
+import com.comicmanager.ui.theme.pressScale
 import com.comicmanager.ui.viewmodel.MainViewModel
 import com.comicmanager.ui.viewmodel.ImportPhase
 import com.comicmanager.ui.viewmodel.ImportState
@@ -156,6 +173,8 @@ fun MainScreen(
     ) { uris: List<Uri> ->
         if (uris.isNotEmpty()) { viewModel.importComics(context, uris) }
     }
+    val canImport = !importState.isImporting && !bulkProgress.isRunning
+    val openZipPicker = { zipPickerLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) }
 
     LaunchedEffect(importState.batchId, importState.importMessage) {
         importState.importMessage?.let { message ->
@@ -187,62 +206,76 @@ fun MainScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
                 title = {
                     if (isSearchActive) {
-                        TextField(
-                            value = searchQuery,
-                            onValueChange = { viewModel.updateSearchQuery(it) },
-                            placeholder = { Text(stringResource(R.string.search_comics_hint)) },
-                            singleLine = true,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                unfocusedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                                focusedTextColor = MaterialTheme.colorScheme.onPrimary,
-                                unfocusedTextColor = MaterialTheme.colorScheme.onPrimary,
-                                cursorColor = MaterialTheme.colorScheme.onPrimary,
-                                focusedIndicatorColor = MaterialTheme.colorScheme.onPrimary,
-                                unfocusedIndicatorColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f)
-                            ),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }),
-                            modifier = Modifier.fillMaxWidth()
+                        ShelfSearchField(
+                            query = searchQuery,
+                            onQueryChange = viewModel::updateSearchQuery,
+                            onSearch = { focusManager.clearFocus() },
+                            isActive = isActive
                         )
                     } else {
-                        Text(stringResource(R.string.app_name))
+                        Text(stringResource(R.string.main_v22_library), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                },
+                navigationIcon = {
+                    if (isSearchActive) {
+                        IconButton(onClick = {
+                            focusManager.clearFocus()
+                            viewModel.toggleSearch()
+                        }) {
+                            Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close_search))
+                        }
                     }
                 },
                 actions = {
-                    IconButton(onClick = { viewModel.toggleSearch() }) {
-                        Icon(
-                            if (isSearchActive) Icons.Filled.Close else Icons.Filled.Search,
-                            contentDescription = stringResource(
-                                if (isSearchActive) R.string.close_search else R.string.action_search
-                            ),
-                            tint = MaterialTheme.colorScheme.onPrimary
-                        )
+                    if (!isSearchActive) {
+                        val searchInteraction = remember { MutableInteractionSource() }
+                        val importInteraction = remember { MutableInteractionSource() }
+                        IconButton(
+                            onClick = viewModel::toggleSearch,
+                            modifier = Modifier.pressScale(searchInteraction),
+                            interactionSource = searchInteraction
+                        ) {
+                            Icon(Icons.Filled.Search, contentDescription = stringResource(R.string.action_search))
+                        }
+                        IconButton(
+                            onClick = openZipPicker,
+                            enabled = canImport,
+                            interactionSource = importInteraction
+                        ) {
+                            Icon(
+                                painterResource(R.drawable.ic_material_file_upload),
+                                contentDescription = stringResource(R.string.shelf_import_zip),
+                                modifier = Modifier.pressScale(importInteraction)
+                            )
+                        }
                     }
                     Box {
                         IconButton(onClick = { showSortMenu = true }) {
-                            Icon(Icons.Filled.ArrowDropDown, contentDescription = stringResource(R.string.sort), tint = MaterialTheme.colorScheme.onPrimary)
+                            Icon(Icons.Filled.MoreVert, contentDescription = stringResource(R.string.shelf_options))
                         }
                         DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                             SortMode.entries.forEach { mode ->
                                 DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(stringResource(mode.labelRes))
-                                            if (mode == currentSortMode) { Spacer(Modifier.width(8.dp)); Text("✓", color = MaterialTheme.colorScheme.primary) }
+                                    text = { Text(stringResource(mode.labelRes)) },
+                                    trailingIcon = {
+                                        if (mode == currentSortMode) {
+                                            Icon(Icons.Filled.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                                         }
                                     },
+                                    modifier = Modifier.semantics { selected = mode == currentSortMode },
                                     onClick = { viewModel.setSortMode(mode); showSortMenu = false }
                                 )
                             }
                             HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.language)) },
+                                leadingIcon = { Icon(painterResource(R.drawable.ic_material_language), contentDescription = null) },
                                 onClick = {
                                     showSortMenu = false
                                     showLanguageDialog = true
@@ -251,16 +284,23 @@ fun MainScreen(
                             HorizontalDivider()
                             DropdownMenuItem(
                                 text = { Text(stringResource(if (selectMode) R.string.cancel_selection else R.string.select_comics)) },
+                                leadingIcon = { Icon(painterResource(R.drawable.ic_material_checklist), contentDescription = null) },
                                 onClick = { showSortMenu = false; viewModel.toggleSelectMode() }
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.batch_import_id_archives)) },
-                                enabled = !importState.isImporting && !bulkProgress.isRunning,
-                                onClick = { showSortMenu = false; zipPickerLauncher.launch(arrayOf("application/zip", "application/x-zip-compressed")) }
+                                leadingIcon = { Icon(painterResource(R.drawable.ic_material_file_upload), contentDescription = null) },
+                                enabled = canImport,
+                                onClick = { showSortMenu = false; openZipPicker() }
                             )
                             DropdownMenuItem(
-                                text = { Text(stringResource(R.string.delete_duplicate_comics), color = MaterialTheme.colorScheme.error) },
-                                enabled = !importState.isImporting && !bulkProgress.isRunning,
+                                text = { Text(stringResource(R.string.delete_duplicate_comics)) },
+                                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                                colors = MenuDefaults.itemColors(
+                                    textColor = MaterialTheme.colorScheme.error,
+                                    leadingIconColor = MaterialTheme.colorScheme.error
+                                ),
+                                enabled = canImport,
                                 onClick = {
                                     showSortMenu = false
                                     val count = viewModel.deleteDuplicates()
@@ -273,7 +313,8 @@ fun MainScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.export_all)) },
-                                enabled = !importState.isImporting && !bulkProgress.isRunning,
+                                leadingIcon = { Icon(painterResource(R.drawable.ic_material_download), contentDescription = null) },
+                                enabled = canImport,
                                 onClick = {
                                     showSortMenu = false
                                     viewModel.exportAll(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
@@ -281,7 +322,8 @@ fun MainScreen(
                             )
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.batch_rename_from_zip)) },
-                                enabled = !importState.isImporting && !bulkProgress.isRunning,
+                                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                                enabled = canImport,
                                 onClick = {
                                     showSortMenu = false
                                     viewModel.renameNumericComics(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } }
@@ -291,9 +333,9 @@ fun MainScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    actionIconContentColor = MaterialTheme.colorScheme.primary
                 )
             )
         }
@@ -304,12 +346,7 @@ fun MainScreen(
             }
         } else if (displayComics.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
-                Text(
-                    stringResource(if (isSearchActive) R.string.no_search_results else R.string.no_comics_sort_hint),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                ShelfEmptyState(isSearchActive, canImport, openZipPicker)
             }
         } else {
             var isRefreshing by remember { mutableStateOf(false) }
@@ -328,7 +365,7 @@ fun MainScreen(
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(3),
                         state = gridState,
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp)
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)
                             .shelfDragSelection(
                                 enabled = selectMode,
                                 orderedIds = orderedComicIds,
@@ -336,8 +373,8 @@ fun MainScreen(
                                 gridState = gridState,
                                 onSelectionChange = viewModel::replaceSelection
                             ),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         items(displayComics, key = { it.id }) { comic ->
                             ComicGridItem(
@@ -353,10 +390,16 @@ fun MainScreen(
                             )
                         }
                     }
-                    PullRefreshIndicator(isRefreshing, pullRefreshState, Modifier.align(Alignment.TopCenter))
+                    PullRefreshIndicator(
+                        isRefreshing,
+                        pullRefreshState,
+                        Modifier.align(Alignment.TopCenter),
+                        backgroundColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
                 }
                 if (selectMode) {
-                    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceVariant, shadowElevation = 8.dp) {
+                    Surface(Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.surfaceContainer) {
                         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 TextButton(onClick = { viewModel.toggleSelectMode() }) { Text(stringResource(R.string.action_cancel)) }
@@ -372,30 +415,38 @@ fun MainScreen(
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 val canAct = !bulkProgress.isRunning && selectedIds.isNotEmpty() && !folderAssignment.isSaving
-                                TextButton(
+                                ShelfSelectionAction(
+                                    label = stringResource(R.string.shelf_folder_v22_add),
+                                    icon = painterResource(R.drawable.ic_material_folder),
                                     enabled = canAct,
                                     onClick = {
                                         val liveSelected = allComics.filter { it.id in selectedIds }.map { it.id }
                                         folderViewModel.open(liveSelected)
                                     },
-                                    modifier = Modifier.weight(1f),
-                                    contentPadding = PaddingValues(horizontal = 4.dp)
-                                ) { Text(stringResource(R.string.shelf_folder_v22_add), style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center) }
-                                TextButton(
+                                    modifier = Modifier.weight(1f)
+                                )
+                                ShelfSelectionAction(
+                                    label = stringResource(R.string.action_export),
+                                    icon = painterResource(R.drawable.ic_material_download),
                                     enabled = canAct,
                                     onClick = { viewModel.exportSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } },
                                     modifier = Modifier.weight(1f)
-                                ) { Text(stringResource(R.string.action_export)) }
-                                TextButton(
+                                )
+                                ShelfSelectionAction(
+                                    label = stringResource(R.string.action_share),
+                                    icon = rememberVectorPainter(Icons.Filled.Share),
                                     enabled = canAct,
                                     onClick = { viewModel.shareSelected(context) },
                                     modifier = Modifier.weight(1f)
-                                ) { Text(stringResource(R.string.action_share)) }
-                                TextButton(
+                                )
+                                ShelfSelectionAction(
+                                    label = stringResource(R.string.action_delete),
+                                    icon = rememberVectorPainter(Icons.Filled.Delete),
                                     enabled = canAct,
                                     onClick = { viewModel.deleteSelected(context) { msg -> scope.launch { snackbarHostState.showSnackbar(message = msg) } } },
-                                    modifier = Modifier.weight(1f)
-                                ) { Text(stringResource(R.string.action_delete), color = MaterialTheme.colorScheme.error) }
+                                    modifier = Modifier.weight(1f),
+                                    destructive = true
+                                )
                             }
                         }
                     }
@@ -404,15 +455,27 @@ fun MainScreen(
         }
 
         if (bulkProgress.isRunning) {
-            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
-                Card(modifier = Modifier.padding(32.dp).widthIn(max = 300.dp)) {
+            Box(
+                Modifier.fillMaxSize().background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier.padding(28.dp).widthIn(max = 320.dp).fillMaxWidth(),
+                    shape = MaterialTheme.shapes.extraLarge,
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+                ) {
                     Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(Modifier.size(48.dp), color = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(16.dp))
                         val progressLabel = bulkProgress.labelRes?.let { stringResource(it) }.orEmpty()
                         Text(stringResource(R.string.progress_running, progressLabel), style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.height(12.dp))
-                        LinearProgressIndicator(progress = { bulkProgress.current.toFloat() / bulkProgress.total.toFloat() }, modifier = Modifier.fillMaxWidth())
+                        LinearProgressIndicator(
+                            progress = {
+                                if (bulkProgress.total > 0) (bulkProgress.current.toFloat() / bulkProgress.total).coerceIn(0f, 1f) else 0f
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         Spacer(Modifier.height(8.dp))
                         Text("${bulkProgress.current} / ${bulkProgress.total}", style = MaterialTheme.typography.bodySmall)
                         if (shareState.isPreparing) {
@@ -786,55 +849,169 @@ private fun ShelfFolderAssignmentDialog(
 }
 
 @Composable
-private fun ImportProgressContent(state: ImportState) {
+private fun ShelfSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSearch: () -> Unit,
+    isActive: Boolean
+) {
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    var searchFocused by remember { mutableStateOf(false) }
+    LaunchedEffect(focusRequester) {
+        if (isActive) focusRequester.requestFocus()
+    }
+    LaunchedEffect(isActive) {
+        if (!isActive && searchFocused) focusManager.clearFocus()
+    }
+
+    TextField(
+        value = query,
+        onValueChange = onQueryChange,
+        placeholder = {
+            Text(stringResource(R.string.search_comics_hint), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        singleLine = true,
+        shape = CircleShape,
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent
+        ),
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester)
+            .onFocusChanged { searchFocused = it.isFocused }
+    )
+}
+
+@Composable
+private fun ShelfEmptyState(isSearchActive: Boolean, canImport: Boolean, onImport: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth().widthIn(max = 480.dp).padding(24.dp),
+        modifier = Modifier.padding(horizontal = 24.dp).verticalScroll(rememberScrollState()),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(stringResource(R.string.importing_comics), style = MaterialTheme.typography.titleLarge)
-        Text(
-            stringResource(R.string.shelf_v21_import_processed, state.completed, state.total),
-            style = MaterialTheme.typography.titleMedium
-        )
-        LinearProgressIndicator(
-            progress = { if (state.total > 0) state.completed.toFloat() / state.total else 0f },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Text(
-            stringResource(R.string.shelf_v21_import_current, (state.completed + 1).coerceAtMost(state.total), state.total),
-            style = MaterialTheme.typography.bodyMedium
-        )
-        if (state.currentName.isNotBlank()) {
-            Text(state.currentName, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        Surface(
+            modifier = Modifier.size(64.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    painter = painterResource(if (isSearchActive) R.drawable.ic_material_search else R.drawable.ic_material_menu_book),
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
         }
         Text(
-            stringResource(when (state.phase) {
-                ImportPhase.CHECKING -> R.string.shelf_v21_import_checking
-                ImportPhase.EXTRACTING -> R.string.shelf_v21_import_extracting
-                ImportPhase.SAVING -> R.string.shelf_v21_import_saving
-                else -> R.string.shelf_v21_import_preparing
-            }),
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = stringResource(if (isSearchActive) R.string.no_search_results else R.string.shelf_empty_title),
+            style = MaterialTheme.typography.titleLarge,
+            textAlign = TextAlign.Center
         )
-        if (state.phase == ImportPhase.EXTRACTING || state.phase == ImportPhase.SAVING) {
+        if (!isSearchActive) {
+            val interaction = remember { MutableInteractionSource() }
+            Button(
+                onClick = onImport,
+                enabled = canImport,
+                modifier = Modifier.pressScale(interaction),
+                interactionSource = interaction
+            ) {
+                Icon(painterResource(R.drawable.ic_material_file_upload), contentDescription = null)
+                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                Text(stringResource(R.string.shelf_import_zip))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShelfSelectionAction(
+    label: String,
+    icon: Painter,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    destructive: Boolean = false
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = if (destructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+        )
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+            Text(label, style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center)
+        }
+    }
+}
+
+@Composable
+private fun ImportProgressContent(state: ImportState) {
+    Card(
+        modifier = Modifier.padding(20.dp).widthIn(max = 440.dp).fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(stringResource(R.string.importing_comics), style = MaterialTheme.typography.titleLarge)
             Text(
-                stringResource(R.string.shelf_v21_import_extracted, state.extractedImages, state.extractedBytes / 1_048_576.0),
+                stringResource(R.string.shelf_v21_import_processed, state.completed, state.total),
+                style = MaterialTheme.typography.titleMedium
+            )
+            LinearProgressIndicator(
+                progress = { if (state.total > 0) state.completed.toFloat() / state.total else 0f },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                stringResource(R.string.shelf_v21_import_current, (state.completed + 1).coerceAtMost(state.total), state.total),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (state.currentName.isNotBlank()) {
+                Text(state.currentName, textAlign = TextAlign.Center, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            Text(
+                stringResource(when (state.phase) {
+                    ImportPhase.CHECKING -> R.string.shelf_v21_import_checking
+                    ImportPhase.EXTRACTING -> R.string.shelf_v21_import_extracting
+                    ImportPhase.SAVING -> R.string.shelf_v21_import_saving
+                    else -> R.string.shelf_v21_import_preparing
+                }),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (state.phase == ImportPhase.EXTRACTING || state.phase == ImportPhase.SAVING) {
+                Text(
+                    stringResource(R.string.shelf_v21_import_extracted, state.extractedImages, state.extractedBytes / 1_048_576.0),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                stringResource(R.string.shelf_v21_import_counts, state.successCount, state.repairedCount, state.skippedCount, state.failedCount),
                 style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                stringResource(R.string.shelf_v21_import_background_hint),
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Text(
-            stringResource(R.string.shelf_v21_import_counts, state.successCount, state.repairedCount, state.skippedCount, state.failedCount),
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            stringResource(R.string.shelf_v21_import_background_hint),
-            style = MaterialTheme.typography.bodySmall,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
@@ -852,36 +1029,64 @@ private fun resolveCoverPath(comic: Comic): String {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ComicGridItem(comic: Comic, isSelected: Boolean, selectMode: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val shape = MaterialTheme.shapes.medium
+    val colors = MaterialTheme.colorScheme
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(shape)
+            .semantics { if (selectMode) selected = isSelected }
             .combinedClickable(onClick = onClick, onLongClick = if (selectMode) null else onLongClick),
-        shape = RoundedCornerShape(8.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        shape = shape,
+        border = BorderStroke(1.dp, if (isSelected) colors.primary else colors.outlineVariant),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected) colors.secondaryContainer else colors.surface,
+            contentColor = if (isSelected) colors.onSecondaryContainer else colors.onSurface
+        )
     ) {
         Box {
             val coverPath = resolveCoverPath(comic)
             Column {
                 SubcomposeAsyncImage(
                     model = ImageRequest.Builder(LocalContext.current).data(coverPath).size(360, 512).crossfade(false).build(),
-                    contentDescription = comic.name,
-                    modifier = Modifier.fillMaxWidth().aspectRatio(0.7f).clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(0.7f),
                     contentScale = ContentScale.Crop,
-                    loading = { Box(Modifier.fillMaxSize().background(Color.LightGray), contentAlignment = Alignment.Center) { CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp) } },
-                    error = { Box(Modifier.fillMaxSize().background(Color.Gray), contentAlignment = Alignment.Center) { Text("📖", style = MaterialTheme.typography.headlineMedium) } }
+                    loading = {
+                        Box(Modifier.fillMaxSize().background(colors.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                        }
+                    },
+                    error = {
+                        Box(Modifier.fillMaxSize().background(colors.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+                            Icon(
+                                painterResource(R.drawable.ic_material_menu_book),
+                                contentDescription = null,
+                                tint = colors.onSurfaceVariant
+                            )
+                        }
+                    }
                 )
                 Text(
                     text = comic.name,
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.labelSmall,
                     minLines = 4,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Start
                 )
             }
             if (selectMode) {
-                Checkbox(checked = isSelected, onCheckedChange = { onClick() }, modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).size(28.dp))
+                Surface(
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(32.dp),
+                    shape = CircleShape,
+                    color = colors.surface
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Checkbox(checked = isSelected, onCheckedChange = null)
+                    }
+                }
             }
         }
     }

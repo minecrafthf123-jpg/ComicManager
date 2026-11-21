@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_search_prompt">输入关键词，按回车搜索。</string>
+    <string name="jm_clear_query">清除搜索文字</string>
+</resources>

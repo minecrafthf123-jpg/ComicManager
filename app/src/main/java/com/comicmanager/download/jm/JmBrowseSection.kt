@@ -5,17 +5,19 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,6 +34,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -39,6 +42,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import com.comicmanager.R
+import com.comicmanager.ui.theme.pressScale
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmComment
 import kotlinx.coroutines.CancellationException
@@ -75,6 +79,8 @@ fun JmBrowseSection(
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val gridState = rememberLazyGridState()
+    val searchInteraction = remember { MutableInteractionSource() }
+    val downloadInteraction = remember { MutableInteractionSource() }
     var query by remember { mutableStateOf("") }
     var submittedQuery by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<JmSearchItem>>(emptyList()) }
@@ -138,7 +144,6 @@ fun JmBrowseSection(
                 page = p
                 // Stop on an empty or duplicate-only API page even when its total is stale.
                 hasMore = merged.size < total && merged.size > previous.size
-                if (merged.isEmpty() && p == 1) error = context.getString(R.string.no_results)
                 if (p == 1 && merged.isNotEmpty()) gridState.scrollToItem(0)
             } catch (e: CancellationException) {
                 throw e
@@ -175,9 +180,17 @@ fun JmBrowseSection(
     }
 
     Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            val allLoadedSelected = results.isNotEmpty() && results.all { it.id in selectedIds }
             TopAppBar(
-                title = { Text(stringResource(R.string.jm_v2_api_search), maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = {
+                    Text(
+                        if (selectionMode) stringResource(R.string.jm_v21_selected_count, selectedIds.size)
+                        else stringResource(R.string.jm_v2_api_search),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                },
                 navigationIcon = {
                     if (selectionMode || searchFocused) {
                         IconButton(onClick = ::handleBack) {
@@ -186,25 +199,46 @@ fun JmBrowseSection(
                     }
                 },
                 actions = {
-                    if (results.isNotEmpty()) {
+                    if (selectionMode) {
+                        TextButton(onClick = {
+                            selectedIds = if (allLoadedSelected) emptySet() else results.mapTo(linkedSetOf()) { it.id }
+                        }) {
+                            Text(stringResource(if (allLoadedSelected) R.string.jm_v21_clear_selection else R.string.jm_v21_select_loaded))
+                        }
+                    } else if (results.isNotEmpty()) {
                         TextButton(onClick = {
                             dismissKeyboard()
-                            if (selectionMode) clearSelection() else selectionMode = true
+                            selectionMode = true
                         }) {
-                            Text(stringResource(if (selectionMode) R.string.cancel_selection else R.string.jm_v21_multi_select))
+                            Text(stringResource(R.string.jm_v21_multi_select))
                         }
                     }
                 }
             )
             Row(
-                Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
+                TextField(
                     value = query,
                     onValueChange = { query = it },
-                    placeholder = { Text(stringResource(R.string.search_jm_hint), style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text(stringResource(R.string.search_jm_hint), maxLines = 1) },
+                    trailingIcon = if (query.isNotEmpty()) {
+                        {
+                            IconButton(onClick = { query = "" }) {
+                                Icon(Icons.Default.Close, stringResource(R.string.jm_clear_query))
+                            }
+                        }
+                    } else null,
                     singleLine = true,
+                    shape = CircleShape,
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = { submitSearch() }, onDone = { submitSearch() }),
                     modifier = Modifier.weight(1f).onFocusChanged { searchFocused = it.isFocused }
@@ -213,39 +247,33 @@ fun JmBrowseSection(
                                 if (event.type == KeyEventType.KeyUp) submitSearch()
                                 true
                             } else false
-                        },
-                    textStyle = MaterialTheme.typography.bodySmall
+                        }
                 )
-                Spacer(Modifier.width(8.dp))
-                Button(onClick = ::submitSearch, enabled = !loading && query.isNotBlank()) {
-                    Text(stringResource(R.string.action_search))
+                FilledIconButton(
+                    onClick = ::submitSearch,
+                    enabled = !loading && query.isNotBlank(),
+                    interactionSource = searchInteraction,
+                    modifier = Modifier.size(48.dp).pressScale(searchInteraction)
+                ) {
+                    Icon(painterResource(R.drawable.ic_material_search), stringResource(R.string.action_search))
                 }
             }
 
             if (results.isNotEmpty()) {
                 Text(
                     stringResource(R.string.jm_v21_loaded_results, results.size, total),
-                    Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
+                    Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             if (selectionMode) {
-                Surface(tonalElevation = 2.dp) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                stringResource(R.string.jm_v21_selected_count, selectedIds.size),
-                                Modifier.weight(1f),
-                                style = MaterialTheme.typography.titleSmall
-                            )
-                            val allLoadedSelected = results.isNotEmpty() && results.all { it.id in selectedIds }
-                            TextButton(onClick = {
-                                selectedIds = if (allLoadedSelected) emptySet() else results.mapTo(linkedSetOf()) { it.id }
-                            }) {
-                                Text(stringResource(if (allLoadedSelected) R.string.jm_v21_clear_selection else R.string.jm_v21_select_loaded))
-                            }
-                        }
+                Surface(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    shape = MaterialTheme.shapes.large
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
                         Button(
                             onClick = {
                                 val selectedItems = results.filter { it.id in selectedIds }
@@ -255,8 +283,11 @@ fun JmBrowseSection(
                                 }
                             },
                             enabled = !isBusy && selectedIds.isNotEmpty(),
-                            modifier = Modifier.fillMaxWidth()
+                            interactionSource = downloadInteraction,
+                            modifier = Modifier.fillMaxWidth().pressScale(downloadInteraction)
                         ) {
+                            Icon(painterResource(R.drawable.ic_material_download), null, Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
                             Text(
                                 if (isBusy) stringResource(R.string.jm_v21_queue_busy)
                                 else stringResource(R.string.jm_v21_download_selected, selectedIds.size)
@@ -273,85 +304,51 @@ fun JmBrowseSection(
                     }
                 }
             }
-            if (loading && results.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(Modifier.size(32.dp))
-                }
-            }
-            error?.let {
-                Text(
-                    it, Modifier.fillMaxWidth().padding(16.dp), color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center
-                )
-            }
-
-            LazyVerticalGrid(
-                state = gridState,
-                columns = GridCells.Fixed(3),
-                modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 12.dp)
-            ) {
-                items(results, key = { it.id }) { item ->
-                    val checked = item.id in selectedIds
-                    Card(
-                        modifier = Modifier.fillMaxWidth().combinedClickable(
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                LazyVerticalGrid(
+                    state = gridState,
+                    columns = GridCells.Fixed(3),
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 16.dp)
+                ) {
+                    error?.takeIf { results.isNotEmpty() }?.let { message ->
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text(message, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    items(results, key = { it.id }) { item ->
+                        val checked = item.id in selectedIds
+                        JmSearchCard(
+                            item = item,
+                            selectionMode = selectionMode,
+                            checked = checked,
                             onClick = { if (selectionMode) toggleSelection(item.id) else openDetail(item.id) },
                             onLongClick = {
                                 dismissKeyboard()
                                 selectionMode = true
                                 toggleSelection(item.id)
-                            }
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        border = if (selectionMode && checked) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                    ) {
-                        Box {
-                            Column {
-                                SubcomposeAsyncImage(
-                                    model = coverUrlFor(item.id), contentDescription = item.name,
-                                    modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)
-                                        .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp)),
-                                    contentScale = ContentScale.Crop,
-                                    loading = {
-                                        Box(Modifier.fillMaxSize().background(Color.LightGray), contentAlignment = Alignment.Center) {
-                                            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                                        }
-                                    },
-                                    error = {
-                                        Box(Modifier.fillMaxSize().background(Color.Gray), contentAlignment = Alignment.Center) {
-                                            Text(stringResource(R.string.cover), color = Color.White, style = MaterialTheme.typography.labelSmall)
-                                        }
-                                    }
-                                )
-                                Text(
-                                    item.name.ifBlank { "JM${item.id}" },
-                                    Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
-                                    style = MaterialTheme.typography.labelSmall, maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center
-                                )
-                            }
-                            if (selectionMode) {
-                                Checkbox(
-                                    checked = checked, onCheckedChange = { toggleSelection(item.id) },
-                                    modifier = Modifier.align(Alignment.TopEnd).background(
-                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(bottomStart = 8.dp)
-                                    )
-                                )
+                            },
+                            onCheckedChange = { toggleSelection(item.id) }
+                        )
+                    }
+                    if (hasMore) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
+                                if (loading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
+                                else OutlinedButton(onClick = { doSearch(page + 1, submittedQuery) }) {
+                                    Text(stringResource(R.string.action_load_more))
+                                }
                             }
                         }
                     }
                 }
-                if (hasMore) {
-                    item(span = { GridItemSpan(3) }) {
-                        Box(Modifier.fillMaxWidth().padding(12.dp), contentAlignment = Alignment.Center) {
-                            if (loading) CircularProgressIndicator(Modifier.size(24.dp), strokeWidth = 2.dp)
-                            else OutlinedButton(onClick = { doSearch(page + 1, submittedQuery) }) {
-                                Text(stringResource(R.string.action_load_more))
-                            }
-                        }
+                if (results.isEmpty()) {
+                    when {
+                        loading -> CircularProgressIndicator(Modifier.size(32.dp))
+                        submittedQuery.isNotBlank() -> JmSearchFeedback(error)
+                        else -> JmSearchPrompt()
                     }
                 }
             }
@@ -367,4 +364,107 @@ fun JmBrowseSection(
             }
         }
     }
+}
+
+@Composable
+private fun JmSearchPrompt() {
+    Column(
+        modifier = Modifier.padding(horizontal = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Surface(
+            modifier = Modifier.size(64.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_material_search), null, Modifier.size(30.dp))
+            }
+        }
+        Text(
+            text = stringResource(R.string.jm_search_prompt),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun JmSearchFeedback(error: String?) {
+    Surface(
+        modifier = Modifier.padding(horizontal = 24.dp),
+        color = if (error == null) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.errorContainer,
+        shape = MaterialTheme.shapes.large
+    ) {
+        Text(
+            text = error ?: stringResource(R.string.no_results),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun JmSearchCard(
+    item: JmSearchItem,
+    selectionMode: Boolean,
+    checked: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    onCheckedChange: () -> Unit
+) {
+    val selected = selectionMode && checked
+    val shape = MaterialTheme.shapes.medium
+    OutlinedCard(
+        modifier = Modifier.fillMaxWidth().clip(shape).combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        shape = shape,
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Box {
+            Column {
+                JmArtwork(item.id, Modifier.fillMaxWidth().aspectRatio(0.75f))
+                Text(
+                    item.name.ifBlank { "JM${item.id}" },
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    minLines = 2,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (selectionMode) {
+                Surface(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp), shape = CircleShape) {
+                    Checkbox(checked = checked, onCheckedChange = { onCheckedChange() })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun JmArtwork(albumId: String, modifier: Modifier) {
+    SubcomposeAsyncImage(
+        model = coverUrlFor(albumId),
+        contentDescription = null,
+        modifier = modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh),
+        contentScale = ContentScale.Crop,
+        loading = {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+            }
+        },
+        error = {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_material_menu_book), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    )
 }

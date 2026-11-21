@@ -1,11 +1,71 @@
 package com.comicmanager.ui.theme
 
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-val Orange = Color(0xFFFF6B35)
-val OrangeDark = Color(0xFFE55A2B)
-val OrangeLight = Color(0xFFFF8C5E)
-val Background = Color(0xFFF8F8F8)
-val Surface = Color(0xFFFFFFFF)
-val OnSurface = Color(0xFF1C1B1F)
-val OnSurfaceVariant = Color(0xFF49454F)
+internal val ComicLightColors = lightColorScheme(
+    primary = Color(0xFF1958B8),
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFD8E6FF),
+    onPrimaryContainer = Color(0xFF102D55),
+    secondary = Color(0xFF405F89),
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFDCE9FD),
+    onSecondaryContainer = Color(0xFF163455),
+    tertiary = Color(0xFF28647A),
+    onTertiary = Color.White,
+    tertiaryContainer = Color(0xFFC9ECFA),
+    onTertiaryContainer = Color(0xFF0B3A4A),
+    background = Color(0xFFF5F8FE),
+    onBackground = Color(0xFF18263A),
+    surface = Color.White,
+    onSurface = Color(0xFF18263A),
+    surfaceVariant = Color(0xFFE1E9F5),
+    onSurfaceVariant = Color(0xFF475B73),
+    outline = Color(0xFF6B7B92),
+    outlineVariant = Color(0xFFD1DBEB),
+    inverseSurface = Color(0xFF263651),
+    inverseOnSurface = Color(0xFFF0F5FE),
+    inversePrimary = Color(0xFFB0CCFF),
+    surfaceBright = Color.White,
+    surfaceDim = Color(0xFFD9E2F1),
+    surfaceContainerLowest = Color.White,
+    surfaceContainerLow = Color(0xFFF2F6FD),
+    surfaceContainer = Color(0xFFEAF0FB),
+    surfaceContainerHigh = Color(0xFFE3EBF8),
+    surfaceContainerHighest = Color(0xFFDCE6F5)
+)
+
+internal val ComicDarkColors = darkColorScheme(
+    primary = Color(0xFFADC7FF),
+    onPrimary = Color(0xFF0B315E),
+    primaryContainer = Color(0xFF214A80),
+    onPrimaryContainer = Color(0xFFDAE7FF),
+    secondary = Color(0xFFB4CBEC),
+    onSecondary = Color(0xFF183754),
+    secondaryContainer = Color(0xFF264465),
+    onSecondaryContainer = Color(0xFFDCE9FD),
+    tertiary = Color(0xFF9CD0E5),
+    onTertiary = Color(0xFF063747),
+    tertiaryContainer = Color(0xFF174D5F),
+    onTertiaryContainer = Color(0xFFC9ECFA),
+    background = Color(0xFF101722),
+    onBackground = Color(0xFFE5EDF9),
+    surface = Color(0xFF131D2B),
+    onSurface = Color(0xFFE5EDF9),
+    surfaceVariant = Color(0xFF26374F),
+    onSurfaceVariant = Color(0xFFB7C8DF),
+    outline = Color(0xFF8D9FB8),
+    outlineVariant = Color(0xFF3C4E68),
+    inverseSurface = Color(0xFFDAE5F5),
+    inverseOnSurface = Color(0xFF243750),
+    inversePrimary = Color(0xFF1958B8),
+    surfaceBright = Color(0xFF32415B),
+    surfaceDim = Color(0xFF101722),
+    surfaceContainerLowest = Color(0xFF0D1420),
+    surfaceContainerLow = Color(0xFF172231),
+    surfaceContainer = Color(0xFF1C293D),
+    surfaceContainerHigh = Color(0xFF23334A),
+    surfaceContainerHighest = Color(0xFF2B3C54)
+)

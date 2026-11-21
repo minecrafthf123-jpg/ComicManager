@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_options">Shelf options</string>
+    <string name="shelf_import_zip">Import ZIP files</string>
+    <string name="shelf_empty_title">No comics yet</string>
+</resources>

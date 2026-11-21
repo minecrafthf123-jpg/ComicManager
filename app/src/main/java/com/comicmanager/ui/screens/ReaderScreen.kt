@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,9 +18,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,9 +26,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -37,6 +33,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +45,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.comicmanager.R
+import com.comicmanager.ui.theme.pressScale
 import com.comicmanager.ui.viewmodel.ReaderPage
 import com.comicmanager.ui.viewmodel.ReaderUiState
 import com.comicmanager.ui.viewmodel.ReaderViewModel
@@ -58,21 +56,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlin.math.roundToInt
 
-private val ReaderPauseIcon = ImageVector.Builder("ReaderPause", 24.dp, 24.dp, 24f, 24f).apply {
-    path(fill = SolidColor(Color.Black)) {
-        moveTo(6f, 5f)
-        verticalLineTo(19f)
-        horizontalLineTo(10f)
-        verticalLineTo(5f)
-        close()
-        moveTo(14f, 5f)
-        verticalLineTo(19f)
-        horizontalLineTo(18f)
-        verticalLineTo(5f)
-        close()
-    }
-}.build()
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
@@ -80,6 +63,8 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val view = LocalView.current
     var showPlaybackSettings by remember { mutableStateOf(false) }
+    val modeInteraction = remember { MutableInteractionSource() }
+    val playbackInteraction = remember { MutableInteractionSource() }
     val leaveReader = {
         viewModel.pauseAutoPlay()
         viewModel.saveProgress()
@@ -108,6 +93,7 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text(state.comicName, maxLines = 1, overflow = TextOverflow.Ellipsis) },
@@ -118,46 +104,74 @@ fun ReaderScreen(viewModel: ReaderViewModel, onBack: () -> Unit) {
                 },
                 actions = {
                     if (state.totalPages > 0) {
-                        Text("${state.currentPage + 1} / ${state.totalPages}", style = MaterialTheme.typography.bodyMedium)
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Text(
+                                "${state.currentPage + 1} / ${state.totalPages}",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1
+                            )
+                        }
                     }
-                    IconButton(onClick = viewModel::toggleMode) {
+                    IconButton(onClick = viewModel::toggleMode, interactionSource = modeInteraction) {
                         Icon(
-                            if (state.isPagerMode) Icons.Filled.KeyboardArrowDown else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                            stringResource(if (state.isPagerMode) R.string.switch_scroll_mode else R.string.switch_page_mode)
+                            painter = painterResource(
+                                if (state.isPagerMode) R.drawable.ic_material_view_day
+                                else R.drawable.ic_material_view_carousel
+                            ),
+                            contentDescription = stringResource(
+                                if (state.isPagerMode) R.string.switch_scroll_mode else R.string.switch_page_mode
+                            ),
+                            modifier = Modifier.pressScale(modeInteraction)
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimary,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onPrimary,
-                    actionIconContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         },
         bottomBar = {
             if (!state.isLoading && state.pages.isNotEmpty()) {
-                Surface(tonalElevation = 3.dp) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainer) {
                     Row(
-                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp),
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        TextButton(onClick = viewModel::toggleAutoPlay) {
-                            Icon(
-                                if (state.isAutoPlaying) ReaderPauseIcon else Icons.Filled.PlayArrow,
-                                contentDescription = null
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(stringResource(if (state.isAutoPlaying) R.string.reader_v2_pause else R.string.reader_v2_play))
-                        }
-                        TextButton(onClick = {
-                            viewModel.pauseAutoPlay()
-                            showPlaybackSettings = true
-                        }) {
+                        FilledTonalButton(
+                            onClick = viewModel::toggleAutoPlay,
+                            interactionSource = playbackInteraction,
+                            modifier = Modifier.pressScale(playbackInteraction)
+                        ) {
+                            val iconSize = Modifier.size(ButtonDefaults.IconSize)
+                            if (state.isAutoPlaying) {
+                                Icon(painterResource(R.drawable.ic_material_pause), null, iconSize)
+                            } else {
+                                Icon(Icons.Rounded.PlayArrow, null, iconSize)
+                            }
+                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
                             Text(
-                                if (state.isPagerMode) stringResource(R.string.reader_v2_page_interval, state.pageIntervalSeconds)
-                                else scrollSpeedDescription(state.scrollSpeed)
+                                stringResource(if (state.isAutoPlaying) R.string.reader_v2_pause else R.string.reader_v2_play),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        TextButton(
+                            onClick = {
+                                viewModel.pauseAutoPlay()
+                                showPlaybackSettings = true
+                            },
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            Icon(painterResource(R.drawable.ic_material_speed), null, Modifier.size(ButtonDefaults.IconSize))
+                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                            Text(
+                                text = if (state.isPagerMode) stringResource(R.string.reader_v2_page_interval, state.pageIntervalSeconds)
+                                       else scrollSpeedDescription(state.scrollSpeed),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -437,7 +451,14 @@ private fun ComicPageImage(page: ReaderPage, modifier: Modifier = Modifier) {
         },
         error = {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.image_load_failed), color = Color.Gray, textAlign = TextAlign.Center)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val color = Color.White.copy(alpha = 0.72f)
+                    Icon(painterResource(R.drawable.ic_material_image_not_supported), null, tint = color)
+                    Text(stringResource(R.string.image_load_failed), color = color, textAlign = TextAlign.Center)
+                }
             }
         }
     )

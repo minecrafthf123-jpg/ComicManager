@@ -1,6 +1,7 @@
 package com.comicmanager.download
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
@@ -8,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,10 +30,14 @@ fun JmDownloadScreen(
     SideEffect { viewModel.setAppContext(context) }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         bottomBar = {
             if (state.isDownloading || state.statusMessage.isNotBlank()) {
-                Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
-                    Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+                    Column(
+                        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         if (state.isDownloading && state.isBatch) {
                             Text(
                                 stringResource(R.string.jm_v21_batch_position, state.batchCurrent, state.batchTotal),
@@ -46,15 +52,26 @@ fun JmDownloadScreen(
                                     if (state.batchTotal > 0) (state.batchCompleted.toFloat() / state.batchTotal).coerceIn(0f, 1f)
                                     else 0f
                                 },
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                modifier = Modifier.fillMaxWidth()
                             )
                             Text(
                                 state.currentAlbumTitle.ifBlank { "JM${state.currentAlbumId}" },
                                 style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (!state.isBatch || !state.isDownloading) {
+                                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+                                    Box(Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                                        Icon(painterResource(R.drawable.ic_material_download), null, Modifier.size(20.dp))
+                                    }
+                                }
+                            }
                             Text(
                                 text = if (state.isDownloading) {
                                     if (state.isCancelling) stringResource(R.string.jm_v2_cancelling) else state.nativePhase
@@ -65,7 +82,7 @@ fun JmDownloadScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             if (state.isDownloading) {
-                                TextButton(onClick = viewModel::cancelNativeDownload, enabled = state.canCancel) {
+                                FilledTonalButton(onClick = viewModel::cancelNativeDownload, enabled = state.canCancel) {
                                     Text(stringResource(if (state.isBatch) R.string.jm_v21_cancel_batch else R.string.action_cancel))
                                 }
                             } else {
@@ -87,11 +104,18 @@ fun JmDownloadScreen(
                                 )
                                 Text(
                                     stringResource(R.string.jm_v21_page_progress, state.nativeCurrent, state.nativeTotal),
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             } else LinearProgressIndicator(Modifier.fillMaxWidth())
                             if (state.nativeMsg.isNotBlank()) {
-                                Text(state.nativeMsg, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    state.nativeMsg,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         } else if (state.failedAlbums.isNotEmpty()) {
                             Text(
