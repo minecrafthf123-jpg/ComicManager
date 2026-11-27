@@ -3,11 +3,10 @@
     <string name="jm_v21_multi_select">Select</string>
     <string name="jm_v21_loaded_results">Loaded %1$d of %2$d results</string>
     <string name="jm_v21_selected_count">%1$d selected</string>
-    <string name="jm_v21_select_loaded">Select all loaded</string>
+    <string name="jm_v21_select_loaded">Select all available</string>
     <string name="jm_v21_clear_selection">Deselect all</string>
     <string name="jm_v21_download_selected">Download selected (%1$d)</string>
-    <string name="jm_v21_queue_busy">Download queue running</string>
-    <string name="jm_v21_selection_scope">Only loaded results are selected. Load more, then select all loaded again to include new results.</string>
+    <string name="jm_v21_selection_scope">Load more results, then select all available again to include them.</string>
     <string name="jm_v21_batch_position">Comic %1$d of %2$d</string>
     <string name="jm_v21_batch_counts">Finished %1$d · Added %2$d · Failed %3$d</string>
     <string name="jm_v21_cancel_batch">Cancel all</string>

@@ -2,6 +2,7 @@ package com.comicmanager.ui.viewmodel
 
 import android.content.SharedPreferences
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import java.lang.reflect.Proxy
 
@@ -30,6 +31,26 @@ class ShelfSortPreferencesTest {
         assertEquals(SortMode.TIME_DESC, ShelfSortPreferences(backing.preferences).read())
         backing.values[key] = 42
         assertEquals(SortMode.TIME_DESC, ShelfSortPreferences(backing.preferences).read())
+    }
+
+    @Test
+    fun customOrderPersistsInSequenceAndCanRepresentAnEmptyShelf() {
+        val backing = PreferenceMemory()
+        val preferences = ShelfSortPreferences(backing.preferences)
+        assertNull(preferences.readCustomOrder())
+        preferences.writeCustomOrder(listOf(42L, 10L, 8L))
+        assertEquals(listOf(42L, 10L, 8L), ShelfSortPreferences(backing.preferences).readCustomOrder())
+        preferences.writeCustomOrder(emptyList())
+        assertEquals(emptyList<Long>(), ShelfSortPreferences(backing.preferences).readCustomOrder())
+    }
+
+    @Test
+    fun customOrderIgnoresMalformedOrDuplicatedIds() {
+        val backing = PreferenceMemory()
+        val preferences = ShelfSortPreferences(backing.preferences)
+        preferences.writeCustomOrder(listOf(1L))
+        backing.values[backing.values.keys.single()] = "3,oops,3,-1,0,2"
+        assertEquals(listOf(3L, 2L), preferences.readCustomOrder())
     }
 
     private class PreferenceMemory {

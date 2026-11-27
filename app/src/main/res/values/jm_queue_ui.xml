@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_queue_add">Add to download queue</string>
+    <string name="jm_queue_add_selected">Queue selected (%1$d)</string>
+    <string name="jm_queue_queued">Queued</string>
+    <string name="jm_queue_in_library">In library</string>
+    <string name="jm_queue_failed">Download failed</string>
+    <plurals name="jm_queue_waiting_count">
+        <item quantity="one">%1$d comic waiting</item>
+        <item quantity="other">%1$d comics waiting</item>
+    </plurals>
+</resources>

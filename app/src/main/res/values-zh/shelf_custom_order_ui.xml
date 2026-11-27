@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_custom_order_hint">长按漫画后拖动，松手保存位置</string>
+    <string name="shelf_move_earlier">向前移动一位</string>
+    <string name="shelf_move_later">向后移动一位</string>
+    <string name="shelf_comic_options">漫画选项</string>
+</resources>

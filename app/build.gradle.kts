@@ -22,8 +22,8 @@ android {
         applicationId = "com.comicmanager"
         minSdk = 24
         targetSdk = 34
-        versionCode = 8
-        versionName = "2.3"
+        versionCode = 9
+        versionName = "2.3.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

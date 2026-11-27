@@ -1,5 +1,6 @@
 package com.comicmanager.download.jm
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -18,6 +19,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.comicmanager.R
 import com.comicmanager.ui.theme.pressScale
+import com.comicmanager.util.JmIdParser
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmComment
 import kotlinx.coroutines.CancellationException
@@ -30,7 +32,9 @@ fun JmDetailScreen(
     onGetPageCount: suspend (JmAlbum) -> Int?,
     onGetComments: suspend (String, Int) -> List<JmComment>,
     onDownload: (String) -> Unit,
-    isBusy: Boolean,
+    @StringRes downloadStatusLabel: Int?,
+    isDownloading: Boolean,
+    isCancelling: Boolean,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -47,7 +51,8 @@ fun JmDetailScreen(
     LaunchedEffect(albumId) {
         try {
             val loadedAlbum = onGetDetail(albumId)
-            check(loadedAlbum.id.trim() == albumId.trim()) {
+            val expectedId = JmIdParser.normalize(albumId)
+            check(expectedId != null && JmIdParser.normalize(loadedAlbum.id) == expectedId) {
                 context.getString(R.string.detail_id_mismatch, loadedAlbum.id, albumId)
             }
             album = loadedAlbum
@@ -157,13 +162,18 @@ fun JmDetailScreen(
                                 }
                                 Button(
                                     onClick = { onDownload(loaded.id) },
-                                    enabled = !isBusy,
+                                    enabled = downloadStatusLabel == null && !isCancelling,
                                     interactionSource = downloadInteraction,
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).pressScale(downloadInteraction)
                                 ) {
                                     Icon(painterResource(R.drawable.ic_material_download), null, Modifier.size(20.dp))
                                     Spacer(Modifier.width(8.dp))
-                                    Text(stringResource(if (isBusy) R.string.downloading else R.string.download_to_library))
+                                    Text(
+                                        stringResource(
+                                            downloadStatusLabel ?: if (isDownloading) R.string.jm_queue_add
+                                            else R.string.download_to_library
+                                        )
+                                    )
                                 }
                             }
                         }

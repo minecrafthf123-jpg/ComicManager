@@ -94,13 +94,13 @@ class JmNativeDownloader(private val repository: ComicRepository) {
                 currentCoroutineContext().ensureActive()
                 val comicName = album.title.orEmpty().replace(Regex("[/\\\\:*?\"<>|]"), "_")
                     .trim().ifBlank { "JM_$albumId" }
-                val photos = album.photoMetas.orEmpty().distinctBy { it.id }.sortedBy { it.sortOrder }.map { meta ->
-                    currentCoroutineContext().ensureActive()
-                    runInterruptible { client.getPhoto(meta.id) }
-                }
-                // Flatten in chapter order, then page order. Filenames repeat across chapters.
-                val images = photos.flatMap { it.images.orEmpty().sortedBy { image -> image.sortOrder } }
-                check(images.isNotEmpty()) { context.getString(R.string.native_empty_directory) }
+                val images = resolveJmDownloadPages(
+                    albumId = albumId,
+                    chapters = album.photoMetas.orEmpty(),
+                    getChapterImages = { chapterId -> runInterruptible { client.getPhoto(chapterId).images.orEmpty() } },
+                    evictChapter = { chapterId -> JmClientFactory.evictChapter(client, chapterId) },
+                    getReaderImages = { chapterId -> runInterruptible { client.getComicRead(chapterId).images.orEmpty() } }
+                ) ?: error(context.getString(R.string.native_no_images, "JM$albumId"))
                 check(staging.mkdirs()) { context.getString(R.string.jm_v2_create_directory_failed) }
                 _state.value = JmNativeState(
                     phase = context.getString(R.string.native_downloading_images), total = images.size

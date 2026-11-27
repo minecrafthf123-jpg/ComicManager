@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="jm_queue_add">加入下载队列</string>
+    <string name="jm_queue_add_selected">将所选加入队列（%1$d 本）</string>
+    <string name="jm_queue_queued">等待下载</string>
+    <string name="jm_queue_in_library">已在书架</string>
+    <string name="jm_queue_failed">下载失败</string>
+    <plurals name="jm_queue_waiting_count">
+        <item quantity="other">等待下载 %1$d 本</item>
+    </plurals>
+</resources>

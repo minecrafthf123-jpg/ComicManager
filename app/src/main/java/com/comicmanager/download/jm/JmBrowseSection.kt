@@ -1,6 +1,7 @@
 package com.comicmanager.download.jm
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.SubcomposeAsyncImage
 import com.comicmanager.R
 import com.comicmanager.ui.theme.pressScale
+import com.comicmanager.util.JmIdParser
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmComment
 import kotlinx.coroutines.CancellationException
@@ -69,7 +71,9 @@ fun JmBrowseSection(
     onEnrichTitles: suspend (List<JmSearchItem>) -> List<JmSearchItem>,
     onDownload: (String) -> Unit,
     onBatchDownload: (List<JmSearchItem>) -> Unit,
-    isBusy: Boolean,
+    downloadStatusLabels: Map<String, Int>,
+    isDownloading: Boolean,
+    isCancelling: Boolean,
     externalOpenId: String? = null,
     externalOpenToken: Int = 0,
     onExternalConsumed: () -> Unit = {}
@@ -94,6 +98,16 @@ fun JmBrowseSection(
     var selectionMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var searchFocused by remember { mutableStateOf(false) }
+    val availableItems = remember(results, downloadStatusLabels) {
+        results.filter { it.id !in downloadStatusLabels }
+    }
+    val selectedItems = remember(availableItems, selectedIds) {
+        availableItems.filter { it.id in selectedIds }
+    }
+
+    LaunchedEffect(downloadStatusLabels.keys) {
+        selectedIds = selectedIds - downloadStatusLabels.keys
+    }
 
     fun dismissKeyboard() {
         focusManager.clearFocus()
@@ -133,7 +147,9 @@ fun JmBrowseSection(
             try {
                 val response = onSearch(submitted, p)
                 val previous = if (p == 1) emptyList() else results
-                var merged = (previous + response.second).filter { it.id.isNotBlank() }.distinctBy { it.id }
+                var merged = (previous + response.second).mapNotNull { item ->
+                    JmIdParser.normalize(item.id)?.let { id -> if (id == item.id) item else item.copy(id = id) }
+                }.distinctBy { it.id }
                 val blankTitles = merged.filter { it.name.isBlank() }
                 if (blankTitles.isNotEmpty()) {
                     val titles = onEnrichTitles(blankTitles).associateBy { it.id }
@@ -181,11 +197,11 @@ fun JmBrowseSection(
 
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            val allLoadedSelected = results.isNotEmpty() && results.all { it.id in selectedIds }
+            val allLoadedSelected = availableItems.isNotEmpty() && selectedItems.size == availableItems.size
             TopAppBar(
                 title = {
                     Text(
-                        if (selectionMode) stringResource(R.string.jm_v21_selected_count, selectedIds.size)
+                        if (selectionMode) stringResource(R.string.jm_v21_selected_count, selectedItems.size)
                         else stringResource(R.string.jm_v2_api_search),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -200,12 +216,16 @@ fun JmBrowseSection(
                 },
                 actions = {
                     if (selectionMode) {
-                        TextButton(onClick = {
-                            selectedIds = if (allLoadedSelected) emptySet() else results.mapTo(linkedSetOf()) { it.id }
-                        }) {
+                        TextButton(
+                            onClick = {
+                                selectedIds = if (allLoadedSelected) emptySet()
+                                else availableItems.mapTo(linkedSetOf()) { it.id }
+                            },
+                            enabled = availableItems.isNotEmpty()
+                        ) {
                             Text(stringResource(if (allLoadedSelected) R.string.jm_v21_clear_selection else R.string.jm_v21_select_loaded))
                         }
-                    } else if (results.isNotEmpty()) {
+                    } else if (availableItems.isNotEmpty()) {
                         TextButton(onClick = {
                             dismissKeyboard()
                             selectionMode = true
@@ -276,21 +296,22 @@ fun JmBrowseSection(
                     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
                         Button(
                             onClick = {
-                                val selectedItems = results.filter { it.id in selectedIds }
-                                if (!isBusy && selectedItems.isNotEmpty()) {
+                                if (!isCancelling && selectedItems.isNotEmpty()) {
                                     onBatchDownload(selectedItems)
                                     clearSelection()
                                 }
                             },
-                            enabled = !isBusy && selectedIds.isNotEmpty(),
+                            enabled = !isCancelling && selectedItems.isNotEmpty(),
                             interactionSource = downloadInteraction,
                             modifier = Modifier.fillMaxWidth().pressScale(downloadInteraction)
                         ) {
                             Icon(painterResource(R.drawable.ic_material_download), null, Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text(
-                                if (isBusy) stringResource(R.string.jm_v21_queue_busy)
-                                else stringResource(R.string.jm_v21_download_selected, selectedIds.size)
+                                stringResource(
+                                    if (isDownloading) R.string.jm_queue_add_selected else R.string.jm_v21_download_selected,
+                                    selectedItems.size
+                                )
                             )
                         }
                         if (hasMore) {
@@ -319,17 +340,20 @@ fun JmBrowseSection(
                         }
                     }
                     items(results, key = { it.id }) { item ->
-                        val checked = item.id in selectedIds
+                        val statusLabel = downloadStatusLabels[item.id]
                         JmSearchCard(
                             item = item,
                             selectionMode = selectionMode,
-                            checked = checked,
+                            checked = statusLabel == null && item.id in selectedIds,
+                            downloadStatusLabel = statusLabel,
                             onClick = { if (selectionMode) toggleSelection(item.id) else openDetail(item.id) },
-                            onLongClick = {
-                                dismissKeyboard()
-                                selectionMode = true
-                                toggleSelection(item.id)
-                            },
+                            onLongClick = if (statusLabel == null) {
+                                {
+                                    dismissKeyboard()
+                                    selectionMode = true
+                                    toggleSelection(item.id)
+                                }
+                            } else null,
                             onCheckedChange = { toggleSelection(item.id) }
                         )
                     }
@@ -358,7 +382,10 @@ fun JmBrowseSection(
             key(albumId, detailRequestKey) {
                 JmDetailScreen(
                     albumId = albumId, onGetDetail = onGetDetail, onGetPageCount = onGetPageCount,
-                    onGetComments = onGetComments, onDownload = onDownload, isBusy = isBusy,
+                    onGetComments = onGetComments, onDownload = onDownload,
+                    downloadStatusLabel = JmIdParser.normalize(albumId)?.let(downloadStatusLabels::get),
+                    isDownloading = isDownloading,
+                    isCancelling = isCancelling,
                     onBack = { detailAlbumId = null }
                 )
             }
@@ -414,14 +441,19 @@ private fun JmSearchCard(
     item: JmSearchItem,
     selectionMode: Boolean,
     checked: Boolean,
+    @StringRes downloadStatusLabel: Int?,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
     onCheckedChange: () -> Unit
 ) {
     val selected = selectionMode && checked
     val shape = MaterialTheme.shapes.medium
     OutlinedCard(
-        modifier = Modifier.fillMaxWidth().clip(shape).combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        modifier = Modifier.fillMaxWidth().clip(shape).combinedClickable(
+            enabled = !selectionMode || downloadStatusLabel == null,
+            onClick = onClick,
+            onLongClick = onLongClick
+        ),
         shape = shape,
         colors = CardDefaults.outlinedCardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface
@@ -430,7 +462,24 @@ private fun JmSearchCard(
     ) {
         Box {
             Column {
-                JmArtwork(item.id, Modifier.fillMaxWidth().aspectRatio(0.75f))
+                Box {
+                    JmArtwork(item.id, Modifier.fillMaxWidth().aspectRatio(0.75f))
+                    downloadStatusLabel?.let { label ->
+                        Surface(
+                            modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
+                            shape = MaterialTheme.shapes.small,
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh
+                        ) {
+                            Text(
+                                stringResource(label),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
                 Text(
                     item.name.ifBlank { "JM${item.id}" },
                     Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -440,7 +489,7 @@ private fun JmSearchCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (selectionMode) {
+            if (selectionMode && downloadStatusLabel == null) {
                 Surface(modifier = Modifier.align(Alignment.TopEnd).padding(4.dp), shape = CircleShape) {
                     Checkbox(checked = checked, onCheckedChange = { onCheckedChange() })
                 }

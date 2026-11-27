@@ -2,7 +2,9 @@ package com.comicmanager.util
 
 import android.util.Log
 import io.github.jukomu.jmcomic.api.enums.ClientType
+import io.github.jukomu.jmcomic.api.model.JmPhoto
 import io.github.jukomu.jmcomic.core.JmComic
+import io.github.jukomu.jmcomic.core.cache.CacheKey
 import io.github.jukomu.jmcomic.core.client.AbstractJmClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
 import java.time.Duration
@@ -26,6 +28,8 @@ object JmClientFactory {
     @Volatile
     private var clientExecutor: ExecutorService? = null
 
+    private var clientConfiguration: JmConfiguration? = null
+
     @Synchronized
     fun get(): AbstractJmClient {
         cached?.let { return it }
@@ -46,13 +50,22 @@ object JmClientFactory {
             throw e
         }
         clientExecutor = safeExecutor
+        clientConfiguration = config
         return cached!!
+    }
+
+    @Synchronized
+    internal fun evictChapter(client: AbstractJmClient, chapterId: String) {
+        if (cached === client) {
+            clientConfiguration?.cachePool?.remove(CacheKey.of(JmPhoto::class.java, chapterId))
+        }
     }
 
     @Synchronized
     fun reset() {
         try { cached?.close() } catch (_: Exception) {}
         cached = null
+        clientConfiguration = null
         clientExecutor?.shutdownNow()
         clientExecutor = null
     }

@@ -71,27 +71,6 @@ data class ComicShareState(
     val message: String? = null
 )
 
-enum class SortMode(@StringRes val labelRes: Int) {
-    TIME_DESC(R.string.sort_recent),
-    TIME_ASC(R.string.sort_oldest),
-    NAME_NUM_DESC(R.string.sort_number_desc),
-    NAME_NUM_ASC(R.string.sort_number_asc)
-}
-
-internal fun sortShelfComics(comics: List<Comic>, mode: SortMode): List<Comic> {
-    val (downloads, local) = comics.partition { it.isJmDownload }
-    fun sort(group: List<Comic>): List<Comic> = when (mode) {
-        SortMode.TIME_DESC -> group.sortedByDescending { it.createdAt }
-        SortMode.TIME_ASC -> group.sortedBy { it.createdAt }
-        SortMode.NAME_NUM_DESC -> group.sortedByDescending { parseNameNumber(it.name) }
-        SortMode.NAME_NUM_ASC -> group.sortedBy { parseNameNumber(it.name) }
-    }
-    return sort(downloads) + sort(local)
-}
-
-private fun parseNameNumber(name: String): Long =
-    name.toLongOrNull() ?: name.filter { it.isDigit() }.toLongOrNull() ?: Long.MAX_VALUE
-
 class MainViewModel(
     private val repository: ComicRepository,
     private val sortPreferences: ShelfSortPreferences
@@ -106,6 +85,9 @@ class MainViewModel(
     // Restore before exposing the shelf flow, so the first order is already correct.
     private val _sortMode = MutableStateFlow(sortPreferences.read())
     val sortMode: StateFlow<SortMode> = _sortMode.asStateFlow()
+    private val _customOrder = MutableStateFlow(sortPreferences.readCustomOrder())
+    private val _recentJmDownload = MutableStateFlow<Long?>(null)
+    private var previouslySeenIds: Set<Long>? = null
 
     private val _selectMode = MutableStateFlow(false)
     val selectMode: StateFlow<Boolean> = _selectMode.asStateFlow()
@@ -114,17 +96,20 @@ class MainViewModel(
     val selectedIds: StateFlow<Set<Long>> = _selectedIds.asStateFlow()
 
     val allComics: StateFlow<List<Comic>> = repository.allComics
+        .onEach(::updateShelfOrdering)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val displayComics: StateFlow<List<Comic>> = combine(
         allComics,
         _searchQuery,
-        _sortMode
-    ) { comics, query, sort ->
+        _sortMode,
+        _customOrder,
+        _recentJmDownload
+    ) { comics, query, sort, customOrder, recentJmDownload ->
         val filtered = if (query.isBlank()) comics
         else comics.filter { it.name.contains(query, ignoreCase = true) }
 
-        sortShelfComics(filtered, sort)
+        sortShelfComics(filtered, sort, customOrder.orEmpty(), recentJmDownload)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _importState = MutableStateFlow(ImportState())
@@ -152,8 +137,42 @@ class MainViewModel(
     }
 
     fun setSortMode(mode: SortMode) {
+        if (mode == SortMode.CUSTOM && _customOrder.value == null && previouslySeenIds != null) {
+            val currentOrder = sortShelfComics(allComics.value, _sortMode.value, recentJmId = _recentJmDownload.value)
+            saveCustomOrder(currentOrder.map { it.id })
+        }
+        _recentJmDownload.value = null
         sortPreferences.write(mode)
         _sortMode.value = mode
+    }
+
+    fun moveComicInCustomOrder(sourceId: Long, destinationId: Long): Boolean {
+        if (_sortMode.value != SortMode.CUSTOM || _isSearchActive.value || _selectMode.value) return false
+        val currentOrder = _customOrder.value ?: return false
+        val moved = moveShelfComic(currentOrder, sourceId, destinationId) ?: return false
+        saveCustomOrder(moved)
+        return true
+    }
+
+    private fun updateShelfOrdering(comics: List<Comic>) {
+        val liveIds = comics.mapTo(hashSetOf()) { it.id }
+        if (previouslySeenIds == liveIds) return
+        _recentJmDownload.value = updateRecentJmDownload(
+            comics, previouslySeenIds, _recentJmDownload.value, liveIds
+        )
+        previouslySeenIds = liveIds
+        val savedOrder = _customOrder.value
+        if (savedOrder != null) {
+            saveCustomOrder(reconcileCustomShelfOrder(comics, savedOrder))
+        } else if (_sortMode.value == SortMode.CUSTOM) {
+            saveCustomOrder(sortShelfComics(comics, SortMode.TIME_DESC).map { it.id })
+        }
+    }
+
+    private fun saveCustomOrder(ids: List<Long>) {
+        if (_customOrder.value == ids) return
+        sortPreferences.writeCustomOrder(ids)
+        _customOrder.value = ids
     }
 
     fun importComics(context: Context, uris: List<Uri>) {

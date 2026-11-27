@@ -6,16 +6,43 @@ import org.junit.Test
 
 class JmDownloadQueueTest {
     private fun album(id: String) = JmSearchItem(id, "Comic $id", "")
+    private fun queueOf(vararg ids: String) = JmDownloadQueue(ids.map(::album))
 
     @Test fun normalizesAndDeduplicatesWithoutChangingSelectionOrder() {
-        val result = normalizeJmDownloadQueue(listOf(album(" 2 "), album("1"), album("2"), album("")))
+        val result = normalizeJmDownloadQueue(listOf(album(" 002 "), album("1"), album("2"), album(""), album("invalid")))
         assertEquals(listOf("2", "1"), result.map { it.id })
+    }
+
+    @Test fun albumsCanBeAppendedAndDeduplicatedWhileTheFirstDownloadIsSuspended() = runBlocking {
+        val queue = queueOf("1", "2")
+        val firstStarted = CompletableDeferred<Unit>()
+        val finishFirst = CompletableDeferred<Unit>()
+        val calls = mutableListOf<String>()
+        val worker = async {
+            runJmDownloadQueue(queue, { false }, { item ->
+                calls += item.id
+                if (item.id == "1") {
+                    firstStarted.complete(Unit)
+                    finishFirst.await()
+                }
+                JmNativeDownloadResult(item.name, 6)
+            }, {})
+        }
+        firstStarted.await()
+        assertEquals(2, queue.append(listOf(album("3"), album("002"), album("1"), album("4"), album("03"))))
+        assertEquals(listOf("2", "3", "4"), queue.waitingAfter(1).map { it.id })
+        assertEquals(listOf("1"), calls)
+        finishFirst.complete(Unit)
+        val result = worker.await()
+        assertEquals(listOf("1", "2", "3", "4"), calls)
+        assertEquals(4, result.total)
+        assertEquals(4, result.completed)
     }
 
     @Test fun oneFailureDoesNotBlockLaterAlbumsAndProgressCountsEachAlbumOnce() = runBlocking {
         val calls = mutableListOf<String>()
         val snapshots = mutableListOf<JmBatchProgress>()
-        val result = runJmDownloadQueue(listOf(album("1"), album("2"), album("3")), { false }, { item ->
+        val result = runJmDownloadQueue(queueOf("1", "2", "3"), { false }, { item ->
             calls += item.id
             if (item.id == "2") error("Unavailable")
             JmNativeDownloadResult(item.name, 24)
@@ -32,7 +59,7 @@ class JmDownloadQueueTest {
     @Test fun nextAlbumStartsOnlyAfterCurrentAlbumHasFinished() = runBlocking {
         var active = 0
         var maximumActive = 0
-        runJmDownloadQueue(listOf(album("1"), album("2")), { false }, { item ->
+        runJmDownloadQueue(queueOf("1", "2"), { false }, { item ->
             active++
             maximumActive = maxOf(maximumActive, active)
             yield()
@@ -45,9 +72,11 @@ class JmDownloadQueueTest {
     @Test fun cancellationRequestedDuringCommitKeepsCommittedAlbumAndStopsRemainingQueue() = runBlocking {
         var cancellationRequested = false
         val calls = mutableListOf<String>()
-        val result = runJmDownloadQueue(listOf(album("1"), album("2")), { cancellationRequested }, { item ->
+        val queue = queueOf("1")
+        val result = runJmDownloadQueue(queue, { cancellationRequested }, { item ->
             calls += item.id
             // The real downloader finishes a NonCancellable database commit before returning.
+            queue.append(listOf(album("2")))
             cancellationRequested = true
             JmNativeDownloadResult(item.name, 12)
         }, {})
@@ -61,7 +90,7 @@ class JmDownloadQueueTest {
         val snapshots = mutableListOf<JmBatchProgress>()
         val calls = mutableListOf<String>()
         val job = launch {
-            runJmDownloadQueue(listOf(album("1"), album("2"), album("3")), { false }, { item ->
+            runJmDownloadQueue(queueOf("1", "2", "3"), { false }, { item ->
                 calls += item.id
                 if (item.id == "1") error("Unavailable")
                 waiting.complete(Unit)
@@ -77,7 +106,7 @@ class JmDownloadQueueTest {
 
     @Test fun cancellationAfterLastCommitDoesNotReportFinishedAlbumsAsCancelled() = runBlocking {
         var cancellationRequested = false
-        val result = runJmDownloadQueue(listOf(album("1")), { cancellationRequested }, { item ->
+        val result = runJmDownloadQueue(queueOf("1"), { cancellationRequested }, { item ->
             cancellationRequested = true
             JmNativeDownloadResult(item.name, 12)
         }, {})
@@ -87,12 +116,12 @@ class JmDownloadQueueTest {
     }
 
     @Test fun retryQueueContainsOnlyFailedAlbums() = runBlocking {
-        val result = runJmDownloadQueue(listOf(album("1"), album("2")), { false }, { item ->
+        val result = runJmDownloadQueue(queueOf("1", "2"), { false }, { item ->
             if (item.id == "2") error("Unavailable")
             JmNativeDownloadResult(item.name, 12)
         }, {})
         val retryCalls = mutableListOf<String>()
-        runJmDownloadQueue(result.failures.map { it.item }, { false }, { item ->
+        runJmDownloadQueue(JmDownloadQueue(result.failures.map { it.item }), { false }, { item ->
             retryCalls += item.id
             JmNativeDownloadResult(item.name, 12)
         }, {})
@@ -100,7 +129,7 @@ class JmDownloadQueueTest {
     }
 
     @Test fun cancellationBeforeFirstAlbumDoesNotStartAnyNetworkWork() = runBlocking {
-        val result = runJmDownloadQueue(listOf(album("1"), album("2")), { true }, {
+        val result = runJmDownloadQueue(queueOf("1", "2"), { true }, {
             error("No download may start after cancellation")
         }, {})
         assertEquals(0, result.completed)

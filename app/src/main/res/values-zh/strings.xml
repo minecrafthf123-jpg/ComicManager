@@ -28,6 +28,7 @@
     <string name="sort_oldest">最早导入</string>
     <string name="sort_number_desc">数字 ↓</string>
     <string name="sort_number_asc">数字 ↑</string>
+    <string name="sort_custom">自定义排序</string>
     <string name="select_comics">选择漫画</string>
     <string name="cancel_selection">取消选择</string>
     <string name="batch_import_id_archives">批量导入 ID 压缩包</string>

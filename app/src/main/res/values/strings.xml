@@ -28,6 +28,7 @@
     <string name="sort_oldest">Earliest imported</string>
     <string name="sort_number_desc">Number ↓</string>
     <string name="sort_number_asc">Number ↑</string>
+    <string name="sort_custom">Custom order</string>
     <string name="select_comics">Select comics</string>
     <string name="cancel_selection">Cancel selection</string>
     <string name="batch_import_id_archives">Import ID ZIPs</string>

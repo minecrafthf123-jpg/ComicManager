@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items as listItems
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,22 +37,29 @@ import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
@@ -129,6 +136,11 @@ fun MainScreen(
     var bindText by remember { mutableStateOf("") }
     var showSortMenu by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
+    val openComicActions: (Comic) -> Unit = { comic ->
+        showActionMenu = comic
+        actionDialogMode = ComicActionDialogMode.ACTIONS
+        bindText = comic.jmId.trim()
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     var launchedShareId by rememberSaveable { mutableLongStateOf(0L) }
     val shareLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -351,43 +363,95 @@ fun MainScreen(
         } else {
             var isRefreshing by remember { mutableStateOf(false) }
             val pullRefreshState = rememberPullRefreshState(isRefreshing, { scope.launch { isRefreshing = true; delay(500); isRefreshing = false } })
+            val customOrder = currentSortMode == SortMode.CUSTOM && !selectMode && !isSearchActive
+            val canReorder = customOrder && isActive && !bulkProgress.isRunning &&
+                lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
+            var drag by remember { mutableStateOf<ShelfReorderDrag?>(null) }
+            val activeDrag = drag.takeIf { canReorder }
+            val prospectiveOrder = remember(displayComics, activeDrag?.comicId, activeDrag?.targetId) {
+                val sourceIndex = displayComics.indexOfFirst { it.id == activeDrag?.comicId }
+                val targetIndex = displayComics.indexOfFirst { it.id == activeDrag?.targetId }
+                if (sourceIndex < 0 || targetIndex < 0 || sourceIndex == targetIndex) displayComics
+                else displayComics.toMutableList().apply { add(targetIndex, removeAt(sourceIndex)) }
+            }
+            val moveEarlier = stringResource(R.string.shelf_move_earlier)
+            val moveLater = stringResource(R.string.shelf_move_later)
 
             Column(Modifier.fillMaxSize().padding(paddingValues)) {
-                if (selectMode) {
+                if (selectMode || customOrder) {
                     Text(
-                        stringResource(R.string.shelf_v2_drag_hint),
+                        stringResource(if (selectMode) R.string.shelf_v2_drag_hint else R.string.shelf_custom_order_hint),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
                     )
                 }
                 Box(Modifier.weight(1f).then(if (selectMode) Modifier else Modifier.pullRefresh(pullRefreshState))) {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(3),
-                        state = gridState,
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)
-                            .shelfDragSelection(
-                                enabled = selectMode,
-                                orderedIds = orderedComicIds,
-                                selectedIds = selectedIds,
-                                gridState = gridState,
-                                onSelectionChange = viewModel::replaceSelection
-                            ),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    Box(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp),
+                        contentAlignment = AbsoluteAlignment.TopLeft
                     ) {
-                        items(displayComics, key = { it.id }) { comic ->
-                            ComicGridItem(
-                                comic = comic,
-                                isSelected = comic.id in selectedIds,
-                                selectMode = selectMode,
-                                onClick = { if (selectMode) viewModel.toggleSelection(comic.id) else onComicClick(comic.id) },
-                                onLongClick = {
-                                    showActionMenu = comic
-                                    actionDialogMode = ComicActionDialogMode.ACTIONS
-                                    bindText = comic.jmId.trim()
-                                }
-                            )
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            state = gridState,
+                            modifier = Modifier.fillMaxSize()
+                                .shelfDragSelection(
+                                    enabled = selectMode,
+                                    orderedIds = orderedComicIds,
+                                    selectedIds = selectedIds,
+                                    gridState = gridState,
+                                    onSelectionChange = viewModel::replaceSelection
+                                )
+                                .shelfDragReorder(
+                                    enabled = canReorder,
+                                    gridState = gridState,
+                                    orderedIds = orderedComicIds,
+                                    onDragChanged = { drag = it },
+                                    onMove = { source, target -> viewModel.moveComicInCustomOrder(source, target) }
+                                ),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // While the preview reflows, anchor scrolling to the slot rather than the moving comic.
+                            itemsIndexed(
+                                prospectiveOrder,
+                                key = { index, comic -> if (activeDrag == null) comic.id else -1L - index }
+                            ) { index, comic ->
+                                val lifted = activeDrag?.comicId == comic.id
+                                val showOptions = { openComicActions(comic) }
+                                val actions = if (canReorder && activeDrag == null) buildList {
+                                    orderedComicIds.getOrNull(index - 1)?.let { target ->
+                                        add(CustomAccessibilityAction(moveEarlier) {
+                                            viewModel.moveComicInCustomOrder(comic.id, target)
+                                        })
+                                    }
+                                    orderedComicIds.getOrNull(index + 1)?.let { target ->
+                                        add(CustomAccessibilityAction(moveLater) {
+                                            viewModel.moveComicInCustomOrder(comic.id, target)
+                                        })
+                                    }
+                                } else emptyList()
+                                ComicGridItem(
+                                    comic = comic,
+                                    isSelected = comic.id in selectedIds,
+                                    selectMode = selectMode,
+                                    onClick = { if (selectMode) viewModel.toggleSelection(comic.id) else onComicClick(comic.id) },
+                                    onLongClick = if (selectMode || customOrder) null else showOptions,
+                                    onShowActions = if (customOrder) showOptions else null,
+                                    reorderActions = actions,
+                                    modifier = Modifier
+                                        .then(if (customOrder && !lifted) Modifier.animateItemPlacement() else Modifier)
+                                        .alpha(if (lifted) 0.22f else 1f)
+                                )
+                            }
+                        }
+                        if (activeDrag != null) {
+                            val liftedComic = remember(displayComics, activeDrag.comicId) {
+                                displayComics.firstOrNull { it.id == activeDrag.comicId }
+                            }
+                            if (liftedComic != null) {
+                                LiftedShelfComic(liftedComic, activeDrag)
+                            }
                         }
                     }
                     PullRefreshIndicator(
@@ -1028,15 +1092,27 @@ private fun resolveCoverPath(comic: Comic): String {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ComicGridItem(comic: Comic, isSelected: Boolean, selectMode: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun ComicGridItem(
+    comic: Comic,
+    isSelected: Boolean,
+    selectMode: Boolean,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    onShowActions: (() -> Unit)? = null,
+    reorderActions: List<CustomAccessibilityAction> = emptyList()
+) {
     val shape = MaterialTheme.shapes.medium
     val colors = MaterialTheme.colorScheme
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(shape)
-            .semantics { if (selectMode) selected = isSelected }
-            .combinedClickable(onClick = onClick, onLongClick = if (selectMode) null else onLongClick),
+            .semantics {
+                if (selectMode) selected = isSelected
+                if (reorderActions.isNotEmpty()) customActions = reorderActions
+            }
+            .then(if (onClick == null) Modifier else Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)),
         shape = shape,
         border = BorderStroke(1.dp, if (isSelected) colors.primary else colors.outlineVariant),
         colors = CardDefaults.cardColors(
@@ -1087,7 +1163,37 @@ private fun ComicGridItem(comic: Comic, isSelected: Boolean, selectMode: Boolean
                         Checkbox(checked = isSelected, onCheckedChange = null)
                     }
                 }
+            } else if (onShowActions != null) {
+                FilledTonalIconButton(
+                    onClick = onShowActions,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(2.dp),
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = colors.surface.copy(alpha = 0.94f),
+                        contentColor = colors.onSurfaceVariant
+                    )
+                ) {
+                    Icon(Icons.Filled.MoreVert, stringResource(R.string.shelf_comic_options), Modifier.size(20.dp))
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun LiftedShelfComic(comic: Comic, drag: ShelfReorderDrag) {
+    val density = LocalDensity.current
+    val cardShape = MaterialTheme.shapes.medium
+    Box(
+        Modifier.absoluteOffset { drag.topLeft }
+            .requiredSize(with(density) { drag.size.width.toDp() }, with(density) { drag.size.height.toDp() })
+            .graphicsLayer {
+                scaleX = 1.04f
+                scaleY = 1.04f
+                shadowElevation = 12.dp.toPx()
+                shape = cardShape
+            }
+            .clearAndSetSemantics {}
+    ) {
+        ComicGridItem(comic, isSelected = false, selectMode = false, onClick = null)
     }
 }

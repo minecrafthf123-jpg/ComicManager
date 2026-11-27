@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="shelf_custom_order_hint">Touch and hold a comic, then drag to reorder it.</string>
+    <string name="shelf_move_earlier">Move one position earlier</string>
+    <string name="shelf_move_later">Move one position later</string>
+    <string name="shelf_comic_options">Comic options</string>
+</resources>

@@ -10,6 +10,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,6 +29,22 @@ fun JmDownloadScreen(
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     SideEffect { viewModel.setAppContext(context) }
+    val downloadStatusLabels = remember(
+        state.isDownloading,
+        state.currentAlbumId,
+        state.queuedAlbums,
+        state.failedAlbums,
+        state.downloadedAlbumIds
+    ) {
+        buildMap {
+            if (state.isDownloading) {
+                state.failedAlbums.forEach { put(it.id, R.string.jm_queue_failed) }
+                state.queuedAlbums.forEach { put(it.id, R.string.jm_queue_queued) }
+                if (state.currentAlbumId.isNotBlank()) put(state.currentAlbumId, R.string.downloading)
+            }
+            state.downloadedAlbumIds.forEach { put(it, R.string.jm_queue_in_library) }
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,
@@ -61,6 +78,14 @@ fun JmDownloadScreen(
                                 maxLines = 1, overflow = TextOverflow.Ellipsis
                             )
                         }
+                        val waitingCount = state.queuedAlbums.size
+                        if (waitingCount > 0) {
+                            Text(
+                                pluralStringResource(R.plurals.jm_queue_waiting_count, waitingCount, waitingCount),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -74,7 +99,8 @@ fun JmDownloadScreen(
                             }
                             Text(
                                 text = if (state.isDownloading) {
-                                    if (state.isCancelling) stringResource(R.string.jm_v2_cancelling) else state.nativePhase
+                                    if (state.isCancelling) stringResource(R.string.jm_v2_cancelling)
+                                    else state.nativePhase.ifBlank { stringResource(R.string.downloading) }
                                 } else state.statusMessage,
                                 modifier = Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -83,7 +109,12 @@ fun JmDownloadScreen(
                             )
                             if (state.isDownloading) {
                                 FilledTonalButton(onClick = viewModel::cancelNativeDownload, enabled = state.canCancel) {
-                                    Text(stringResource(if (state.isBatch) R.string.jm_v21_cancel_batch else R.string.action_cancel))
+                                    Text(
+                                        stringResource(
+                                            if (state.isBatch || waitingCount > 0) R.string.jm_v21_cancel_batch
+                                            else R.string.action_cancel
+                                        )
+                                    )
                                 }
                             } else {
                                 if (state.canRetry) {
@@ -142,7 +173,9 @@ fun JmDownloadScreen(
                 onEnrichTitles = viewModel::enrichJmTitles,
                 onDownload = viewModel::startNativeDownload,
                 onBatchDownload = viewModel::startBatchDownload,
-                isBusy = state.isDownloading,
+                downloadStatusLabels = downloadStatusLabels,
+                isDownloading = state.isDownloading,
+                isCancelling = state.isCancelling,
                 externalOpenId = externalOpenId,
                 externalOpenToken = externalOpenToken,
                 onExternalConsumed = onExternalConsumed

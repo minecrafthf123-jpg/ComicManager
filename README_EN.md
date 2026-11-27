@@ -4,7 +4,7 @@
 
 An Android comic manager with **JMComic API search, details, and downloads to a local library**, ZIP imports, library organization, zoomable reading, automatic playback, and reading progress.
 
-Current version: **2.3** (`versionCode 8`)
+Current version: **2.3.1** (`versionCode 9`)
 
 System requirement: **Android 7.0 (API 24) or later**
 
@@ -21,6 +21,12 @@ System requirement: **Android 7.0 (API 24) or later**
 - Manually bind or edit associated IDs and open the corresponding details from the library
 
 Comic images, covers, and the database are all stored locally on the device. The project does not automatically upload personal library data.
+
+## Highlights in v2.3.1
+
+- Retry JM chapters that return an empty page list and use the reader API to resolve missing page lists when needed
+- Add single albums or batches while a download is running, with sequential processing and a visible waiting count
+- Choose custom library sorting and hold and drag comics to save their order. New JM downloads start at the top and can be moved anywhere
 
 ## Highlights in v2.3
 
@@ -106,7 +112,7 @@ You can download the official APK from GitHub Releases. On first installation, A
 
 To upgrade directly from an older version, the old and new APKs must use the same application signing key:
 
-- Older releases signed with the same official key can upgrade directly to 2.3
+- Older releases signed with the same official key can upgrade directly to 2.3.1
 - A Debug build or a build signed with a different key cannot replace the official release directly
 - If Android reports a signature conflict, you must uninstall the old version first; uninstalling deletes the library, images, reading history, and progress stored in the app's private directory
 
